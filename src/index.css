@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+}
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+}
+
+body {
+  @apply antialiased;
+}
+
+/* ✨ PREMIUM GRADIENTS (Bright & Shiny) ✨ */
+.card-gradient-blue {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
+}
+.card-gradient-orange {
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 50%, #c2410c 100%);
+}
+.card-gradient-purple {
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 50%, #6d28d9 100%);
+}
+.card-gradient-green {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%);
+}
+
+/* Scrollbar Hide (Clean Look) */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
