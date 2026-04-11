@@ -22,22 +22,22 @@ jobs:
           npm install
           npm run build
 
-      - name: Sync Capacitor Android
-        run: npx cap sync android
-
-      - name: Setup Java for Android Studio
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Sync Capacitor
+        run: npx cap sync android
+
       - name: Build Android APK
         working-directory: ./android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug
-
-      - name: Upload APK for Download
+          ./gradlew assembleDebug --stacktrace
+          
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ProUtility-App-APK
