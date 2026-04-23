@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import QRCode from 'qrcode';
+import { Capacitor } from '@capacitor/core'; // 🔴 NAYA: Native Android Check
+import { Filesystem, Directory } from '@capacitor/filesystem'; // 🔴 NAYA: Storage & Permissions
 
 // --- PREMIUM ICONS ---
 const Icons = {
@@ -7,7 +9,6 @@ const Icons = {
   Download: () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>)
 };
 
-// 🔴 Added onNotify here
 const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
   const [text, setText] = useState("");
   const [qrUrl, setQrUrl] = useState("");
@@ -37,7 +38,7 @@ const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
       });
       setQrUrl(url);
       
-      // 🔴 NAYA: Haptic feedback jab QR generate ho
+      // Haptic feedback jab QR generate ho
       if(onNotify) onNotify(null, true); 
 
     } catch (e) { 
@@ -47,39 +48,77 @@ const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
     setIsGenerating(false);
   };
 
- // --- 2. 100% WORKING DOWNLOAD LOGIC WITH AD GATEKEEPER ---
+  // 🔴 NAYA: Base64 Helper for Native Storage
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+         const base64Data = reader.result.split(',')[1];
+         resolve(base64Data);
+      };
+      reader.readAsDataURL(blob);
+    });
+  };
+
+ // --- 2. 100% NATIVE DOWNLOAD LOGIC WITH AD GATEKEEPER ---
  const handleDownload = async () => {
   try {
       // Data URL ko asli Blob file mein convert karna
       const res = await fetch(qrUrl);
       const blobObj = await res.blob();
       
-      const executeDownload = () => {
-          // Native Download Trigger karna
-          const link = document.createElement('a');
-          link.href = qrUrl;
-          link.download = 'ProUtility_QR.png'; 
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+      const executeDownload = async () => {
+          try {
+              const fileName = `ProUtility_QR_${Date.now()}.png`;
 
-          setIsSaving(false);
-          setStatus("");
+              // 🔴 NATIVE ANDROID SAVE LOGIC
+              if (Capacitor.isNativePlatform()) {
+                  setStatus("Asking Permission...");
+                  await Filesystem.requestPermissions();
+                  setStatus("Saving to Phone...");
 
-          // 🔴 THE FIX: Yahan 'blobObj' bhej rahe hain App.jsx ko!
-          if (onNotify) {
-              onNotify("QR Code Saved! ✅", false, "ProUtility_QR.png", "QR Code", blobObj);
+                  const base64Data = await blobToBase64(blobObj);
+                  await Filesystem.writeFile({
+                      path: fileName,
+                      data: base64Data,
+                      directory: Directory.Documents 
+                  });
+              } 
+              // 🌐 WEB BROWSER FALLBACK LOGIC
+              else {
+                  const link = document.createElement('a');
+                  link.href = qrUrl;
+                  link.download = fileName; 
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+              }
+
+              setIsSaving(false);
+              setStatus("");
+
+              // 🔴 RECENT FILES ME UPDATE
+              if (onNotify) {
+                  onNotify("QR Code Saved to Phone! ✅", false, fileName, "QR Code", blobObj);
+              }
+
+          } catch (err) {
+              console.error("Save Error:", err);
+              alert("⚠️ Storage Permission Required!\nPlease allow storage access to save the QR Code.");
+              setIsSaving(false);
+              setStatus("");
           }
       };
 
       if (isPremium) {
-          executeDownload();
+          await executeDownload();
       } else {
           if (navigator.onLine) {
               setIsSaving(true);
               setStatus("Loading Ad...");
-              setTimeout(() => {
-                  executeDownload();
+              setTimeout(async () => {
+                  await executeDownload();
               }, 2000); // 2 seconds ad simulation
           } else {
               alert("⚠️ Internet Required!\n\nFree users need internet to save files. Enable internet to watch a quick Ad, or Upgrade to Premium.");
@@ -108,7 +147,7 @@ const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
       {/* HEADER */}
       <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'25px'}}>
         <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-          <button onClick={onBack} style={{background:'var(--bg-card)', border:'1px solid var(--border-color)', color:'var(--text-main)', borderRadius:'50%', width:'40px', height:'40px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer', transition: '0.3s'}}>
+          <button onClick={onBack} style={{background:'var(--bg-card)', border:'1px solid var(--border-color)', color:'var(--text-main)', borderRadius:'50%', width:'40px', height:'40px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer', transition: '0.3s', touchAction: 'manipulation'}}>
             <Icons.Back/>
           </button>
           <h2 style={{margin:0, color:'var(--text-main)', fontSize:'22px'}}>QR Generator</h2>
@@ -130,7 +169,7 @@ const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
             style={{width:'100%', minHeight:'100px', padding:'15px', borderRadius:'15px', background:'var(--bg-input)', color:'var(--text-main)', border:'1px solid var(--border-color)', marginBottom:'20px', fontSize:'16px', resize:'vertical', fontFamily: 'inherit'}}
          />
          
-         <button onClick={generateQR} disabled={isGenerating} style={{width:'100%', padding:'16px', background:'#3b82f6', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isGenerating ? 'not-allowed' : 'pointer', boxShadow: '0 4px 15px rgba(59, 130, 246, 0.4)', transition: '0.2s'}}>
+         <button onClick={generateQR} disabled={isGenerating} style={{width:'100%', padding:'16px', background:'#3b82f6', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isGenerating ? 'not-allowed' : 'pointer', boxShadow: '0 4px 15px rgba(59, 130, 246, 0.4)', transition: '0.2s', touchAction: 'manipulation'}}>
             {isGenerating ? "Generating..." : "Generate QR Code"}
          </button>
 
@@ -143,7 +182,7 @@ const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
                   <img src={qrUrl} alt="Generated QR" style={{width:'200px', height:'200px', objectFit:'contain', display: 'block'}}/>
               </div>
 
-              <button onClick={handleDownload} disabled={isSaving} style={{width:'100%', padding:'16px', background:'#10b981', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isSaving ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)'}}>
+              <button onClick={handleDownload} disabled={isSaving} style={{width:'100%', padding:'16px', background:'#10b981', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isSaving ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)', touchAction: 'manipulation'}}>
                   <Icons.Download /> Download PNG
               </button>
            </div>
