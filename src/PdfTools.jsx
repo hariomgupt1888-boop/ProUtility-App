@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import jsPDF from 'jspdf';
-import { PDFDocument, degrees, rgb } from 'pdf-lib'; // 🔴 NAYA: Added rgb for Watermark & Editor
+import { PDFDocument, degrees, rgb } from 'pdf-lib'; 
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
-// --- ICONS (100% Original, Professional & Crash-Free) ---
+// --- ICONS ---
 const Icons = {
   Back: () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>),
   Merge: () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M8 13h8m-8-4h8m-4 8v-8" /></svg>),
@@ -25,7 +25,6 @@ const Icons = {
   MoveDown: () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14" /><path d="M19 12l-7 7-7-7" /></svg>),
   RotateCW: () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>),
   Crown: () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15" /><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z" /></svg>),
-  // 🔴 NAYA: 3 New Icons for New Features
   Edit: () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>),
   Watermark: () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>),
   OCR: () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="M3 9h18M9 21V9" /></svg>),
@@ -50,7 +49,14 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
   
   const [renameText, setRenameText] = useState('');
   const [textInput, setTextInput] = useState('');
-  const [extractedText, setExtractedText] = useState(''); // 🔴 NAYA: State for OCR
+  const [extractedText, setExtractedText] = useState(''); 
+
+  // 🔴 NAYA: INTERACTIVE PDF STATES (For Editor & Watermark)
+  const [previewImg, setPreviewImg] = useState(null);
+  const [pdfDimensions, setPdfDimensions] = useState({ width: 0, height: 0 });
+  const [watermarkPos, setWatermarkPos] = useState({ x: 50, y: 50 }); // Center default
+  const [editorTexts, setEditorTexts] = useState([]); // Format: { id, text, x, y }
+  const previewContainerRef = useRef(null);
 
   const [compressLevel, setCompressLevel] = useState(50);
   const [reduceQuality, setReduceQuality] = useState(false);
@@ -66,9 +72,7 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
     if (!window.pdfjsLib) {
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      script.onload = () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      };
+      script.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; };
       document.head.appendChild(script);
     }
   }, []);
@@ -82,8 +86,7 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
           try {
             const page = await viewerDoc.getPage(i);
             const viewport = page.getViewport({ scale: window.innerWidth < 600 ? 1.0 : 1.5 });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
+            canvas.height = viewport.height; canvas.width = viewport.width;
             await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
             canvas.setAttribute('data-rendered', 'true');
           } catch (e) { console.log('Render error page', i); }
@@ -93,33 +96,28 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
     }
   }, [viewerDoc, viewPagesCount, activeTool]);
 
-  const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = reject;
-      reader.onload = () => { resolve(reader.result.split(',')[1]); };
-      reader.readAsDataURL(blob);
-    });
-  };
+  const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.readAsDataURL(blob);
+  });
 
   const handleNativeSave = async (blob, fileName, fileType) => {
       try {
           if (Capacitor.isNativePlatform()) {
-              setStatus("Asking Permission...");
-              await Filesystem.requestPermissions();
               setStatus("Saving to Phone...");
               const base64Data = await blobToBase64(blob);
               await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents });
           } else {
               const url = window.URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url; link.download = fileName;
+              const link = document.createElement('a'); link.href = url; link.download = fileName;
               document.body.appendChild(link); link.click(); document.body.removeChild(link);
           }
           if (onNotify) onNotify(`${fileName} Saved! ✅`, false, fileName, fileType, blob);
       } catch (error) {
           console.error("Save Error: ", error);
-          alert("⚠️ Storage Permission Required!\nPlease allow storage access to save the file.");
+          alert("⚠️ Storage Permission Required!\nPlease allow storage access.");
       }
   };
 
@@ -135,20 +133,19 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
         setIsProcessing(false); setStatus('');
       }, 1500); 
     } else {
-      alert('⚠️ Internet Required!\nFree users need internet to save files. Upgrade to Premium for offline use.');
+      alert('⚠️ Internet Required!\nFree users need internet to save files.');
       setIsProcessing(false); setStatus('');
     }
   };
 
-  // 🔴 NAYA: Updated Tools Array with 3 New Features
   const tools = [
     { id: 'merge', label: 'Merge PDF', icon: <Icons.Merge />, color: '#e11d48', bg: '#ffe4e6' },
     { id: 'split', label: 'Split PDF', icon: <Icons.Split />, color: '#f97316', bg: '#ffedd5' },
     { id: 'compress', label: 'Compress', icon: <Icons.Compress />, color: '#16a34a', bg: '#dcfce7' },
     { id: 'img-to-pdf', label: 'Img to PDF', icon: <Icons.ImgToPdf />, color: '#f59e0b', bg: '#fef3c7' },
-    { id: 'pdf-ocr', label: 'Extract Text', icon: <Icons.OCR />, color: '#14b8a6', bg: '#ccfbf1' }, // NEW
-    { id: 'watermark', label: 'Watermark', icon: <Icons.Watermark />, color: '#0ea5e9', bg: '#e0f2fe' }, // NEW
-    { id: 'pdf-editor', label: 'Edit / Add Text', icon: <Icons.Edit />, color: '#8b5cf6', bg: '#ede9fe' }, // NEW
+    { id: 'pdf-ocr', label: 'Extract Text', icon: <Icons.OCR />, color: '#14b8a6', bg: '#ccfbf1' }, 
+    { id: 'watermark', label: 'Watermark', icon: <Icons.Watermark />, color: '#0ea5e9', bg: '#e0f2fe' }, 
+    { id: 'pdf-editor', label: 'Add Text', icon: <Icons.Edit />, color: '#8b5cf6', bg: '#ede9fe' }, 
     { id: 'text-to-pdf', label: 'Text to PDF', icon: <Icons.Text />, color: '#3b82f6', bg: '#ede9fe' },
     { id: 'rotate', label: 'Rotate Pages', icon: <Icons.Rotate />, color: '#8b5cf6', bg: '#e0e7ff' },
     { id: 'delete', label: 'Delete Pages', icon: <Icons.TrashSmall />, color: '#ef4444', bg: '#fee2e2' },
@@ -163,33 +160,25 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
   const reset = () => {
     setFiles([]); setPageData([]); setRenameText(''); setTextInput('');
     setExtractedText(''); setStatus(''); setIsProcessing(false);
-    setViewerDoc(null); setViewPagesCount(0);
+    setViewerDoc(null); setViewPagesCount(0); setPreviewImg(null); 
+    setEditorTexts([]); setWatermarkPos({x: 50, y: 50});
   };
 
   const handleToolClick = (toolId) => {
     if (onNotify) onNotify(null, true); 
-    if (toolId === 'lock' || toolId === 'unlock') {
-      if (onOpenSecurity) onOpenSecurity(toolId); return;
-    }
-    setActiveTool(toolId);
-    reset();
-    if (toolId !== 'text-to-pdf') {
-      if (fileInputRef.current) fileInputRef.current.click();
-    }
+    if (toolId === 'lock' || toolId === 'unlock') { if (onOpenSecurity) onOpenSecurity(toolId); return; }
+    setActiveTool(toolId); reset();
+    if (toolId !== 'text-to-pdf') { if (fileInputRef.current) fileInputRef.current.click(); }
   };
 
   const handleUpload = async (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const newFiles = Array.from(e.target.files).map((f) => ({
-      id: Math.random().toString(), file: f, name: f.name, size: f.size,
-    }));
-
+    const newFiles = Array.from(e.target.files).map((f) => ({ id: Math.random().toString(), file: f, name: f.name, size: f.size }));
     if (onNotify) onNotify(null, true); 
     const currentTool = activeTool;
 
     if (currentTool === 'view') {
-      setIsProcessing(true); setStatus('Loading Viewer...');
-      setFiles([newFiles[0]]);
+      setIsProcessing(true); setStatus('Loading Viewer...'); setFiles([newFiles[0]]);
       try {
         const buffer = await readFile(newFiles[0].file);
         const pdfDoc = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
@@ -198,19 +187,34 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
       setIsProcessing(false); setStatus(''); e.target.value = null; return;
     }
 
-    if (['delete', 'rotate', 'organize', 'split', 'pdf-to-img'].includes(currentTool)) {
+    // 🔴 NAYA: Generate Interactive Preview for Editor & Watermark
+    if (['watermark', 'pdf-editor'].includes(currentTool)) {
+      setIsProcessing(true); setStatus('Generating Preview...'); setFiles([newFiles[0]]);
+      try {
+          const buffer = await readFile(newFiles[0].file);
+          const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 1.5 });
+          setPdfDimensions({ width: viewport.width, height: viewport.height });
+
+          const canvas = document.createElement('canvas');
+          canvas.height = viewport.height; canvas.width = viewport.width;
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          setPreviewImg(canvas.toDataURL('image/jpeg', 0.8));
+      } catch (err) { alert('Preview Failed! Proceeding blind.'); }
+      setIsProcessing(false); setStatus(''); e.target.value = null; return;
+    }
+
+    if (['delete', 'rotate', 'organize', 'split', 'pdf-to-img', 'pdf-ocr'].includes(currentTool)) {
       setIsProcessing(true); setStatus('Loading...');
       try {
         const buffer = await readFile(newFiles[0].file);
-        try { await PDFDocument.load(buffer); } 
-        catch (err) { alert('File Encrypted! Please unlock it first.'); reset(); e.target.value = null; return; }
-
+        try { await PDFDocument.load(buffer); } catch { alert('File Encrypted!'); reset(); return; }
         const pdfDoc = await PDFDocument.load(buffer);
         const count = pdfDoc.getPageCount();
         let thumbnails = [];
-
         try {
-          if (window.pdfjsLib) {
+          if (window.pdfjsLib && currentTool !== 'pdf-ocr') {
             const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
             const maxPages = count > 30 ? 30 : count;
             for (let i = 1; i <= maxPages; i++) {
@@ -222,17 +226,13 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
               thumbnails.push(canvas.toDataURL('image/jpeg', 0.5));
             }
           }
-        } catch (err) { console.log('Preview engine skipped.'); }
-
-        setPageData(Array.from({ length: count }, (_, i) => ({
-            originalIndex: i, displayIndex: i + 1, rotation: 0, thumbnail: thumbnails[i] || null,
-        })));
+        } catch (err) { console.log('Preview skip'); }
+        setPageData(Array.from({ length: count }, (_, i) => ({ originalIndex: i, displayIndex: i + 1, rotation: 0, thumbnail: thumbnails[i] || null })));
         setFiles([newFiles[0]]);
       } catch { alert('Failed to load PDF.'); reset(); }
       setIsProcessing(false); setStatus('');
     } else if (currentTool === 'rename') {
-      setFiles([newFiles[0]]);
-      setRenameText(newFiles[0].name.replace('.pdf', ''));
+      setFiles([newFiles[0]]); setRenameText(newFiles[0].name.replace('.pdf', ''));
     } else {
       setFiles((prev) => [...prev, ...newFiles]);
     }
@@ -240,7 +240,7 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
   };
 
   // --- FEATURES LOGIC ---
-  const runMerge = async () => {
+  const runMerge = async () => { /* Kept original */
     if (files.length < 2) return alert('Select 2+ files');
     setIsProcessing(true);
     try {
@@ -254,8 +254,8 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
     } catch { alert('Failed to Merge'); setIsProcessing(false); }
   };
 
-  const runSplit = async () => {
-    if (!isPremium && !navigator.onLine) return alert('⚠️ Internet Required for Splitting!');
+  const runSplit = async () => { /* Kept original */
+    if (!isPremium && !navigator.onLine) return alert('⚠️ Internet Required!');
     setIsProcessing(true); setStatus('Splitting Pages...');
     try {
       const pdf = await PDFDocument.load(await readFile(files[0].file));
@@ -263,27 +263,23 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
         const newPdf = await PDFDocument.create();
         const [page] = await newPdf.copyPages(pdf, [i]);
         newPdf.addPage(page);
-        const bytes = await newPdf.save();
-        const blob = new Blob([bytes], { type: 'application/pdf' });
-
-        await handleNativeSave(blob, `Page_${i + 1}.pdf`, 'Split PDF');
+        await handleNativeSave(new Blob([await newPdf.save()], { type: 'application/pdf' }), `Page_${i + 1}.pdf`, 'Split PDF');
         await new Promise((r) => setTimeout(r, 400));
       }
-      if (onNotify) onNotify('All pages separated successfully! ✅', false);
+      if (onNotify) onNotify('All pages separated! ✅', false);
     } catch { alert('Failed to Split'); }
     setIsProcessing(false); setStatus('');
   };
 
-  const runCompress = async () => {
+  const runCompress = async () => { /* Kept original */
     setIsProcessing(true);
     try {
       const pdf = await PDFDocument.load(await readFile(files[0].file));
-      const bytes = await pdf.save({ useObjectStreams: false });
-      await checkInternetAndDownload(new Blob([bytes], { type: 'application/pdf' }), 'Compressed_' + files[0].name, 'Compressed PDF');
-    } catch { alert('Failed to compress'); setIsProcessing(false); }
+      await checkInternetAndDownload(new Blob([await pdf.save({ useObjectStreams: false })], { type: 'application/pdf' }), 'Compressed_' + files[0].name, 'Compressed PDF');
+    } catch { alert('Failed'); setIsProcessing(false); }
   };
 
-  const runImgToPdf = async () => {
+  const runImgToPdf = async () => { /* Kept original */
     setIsProcessing(true);
     try {
       const doc = new jsPDF();
@@ -297,7 +293,7 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
     } catch { alert('Failed'); setIsProcessing(false); }
   };
 
-  const runPdfToImg = async () => {
+  const runPdfToImg = async () => { /* Kept original */
     if (!isPremium && !navigator.onLine) return alert('Internet Required!');
     setIsProcessing(true); setStatus('Extracting Images...');
     try {
@@ -309,30 +305,27 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
         const canvas = document.createElement('canvas');
         canvas.height = viewport.height; canvas.width = viewport.width;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-
         const imgBlob = await (await fetch(canvas.toDataURL('image/png'))).blob();
         await handleNativeSave(imgBlob, `Page_${i}.png`, 'Image Extraction');
         await new Promise((r) => setTimeout(r, 300));
       }
-      if (onNotify) onNotify('Images Extracted Successfully! 🖼️', false);
-    } catch { alert('Please wait for engine to load or check file.'); }
+      if (onNotify) onNotify('Images Extracted! 🖼️', false);
+    } catch { alert('Failed.'); }
     setIsProcessing(false); setStatus('');
   };
 
-  const runTextToPdf = async () => {
+  const runTextToPdf = async () => { /* Kept original */
     if (!textInput) return alert('Write something!');
-    const doc = new jsPDF();
-    doc.text(doc.splitTextToSize(textInput, 180), 10, 10);
+    const doc = new jsPDF(); doc.text(doc.splitTextToSize(textInput, 180), 10, 10);
     await checkInternetAndDownload(doc.output('blob'), 'Text_Document.pdf', 'Text to PDF');
   };
 
-  const runRename = async () => {
+  const runRename = async () => { /* Kept original */
     if (!renameText) return;
-    const blob = files[0].file.slice(0, files[0].file.size, files[0].file.type);
-    await checkInternetAndDownload(blob, `${renameText}.pdf`, 'Renamed PDF');
+    await checkInternetAndDownload(files[0].file.slice(0, files[0].file.size, files[0].file.type), `${renameText}.pdf`, 'Renamed PDF');
   };
 
-  const runPageOps = async () => {
+  const runPageOps = async () => { /* Kept original */
     setIsProcessing(true);
     try {
       const src = await PDFDocument.load(await readFile(files[0].file));
@@ -342,48 +335,53 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
         if (p.rotation !== 0) page.setRotation(degrees(page.getRotation().angle + p.rotation));
         newPdf.addPage(page);
       }
-      const bytes = await newPdf.save();
-      await checkInternetAndDownload(new Blob([bytes], { type: 'application/pdf' }), 'Modified_' + files[0].name, 'Organized PDF');
+      await checkInternetAndDownload(new Blob([await newPdf.save()], { type: 'application/pdf' }), 'Modified_' + files[0].name, 'Organized PDF');
     } catch { alert('Failed'); setIsProcessing(false); }
   };
 
-  // 🔴 NAYA: NEW FEATURES LOGIC
+  // 🔴 NAYA: Interactive Watermark Engine (Coordinate Mapping)
   const runWatermark = async () => {
     if (!textInput) return alert('Enter watermark text!');
-    setIsProcessing(true);
-    setStatus("Applying Watermark...");
+    setIsProcessing(true); setStatus("Applying Watermark...");
     try {
       const pdfDoc = await PDFDocument.load(await readFile(files[0].file));
       const pages = pdfDoc.getPages();
       pages.forEach((page) => {
         const { width, height } = page.getSize();
-        page.drawText(textInput, {
-          x: width / 4, y: height / 2, size: 50, color: rgb(0.7, 0.7, 0.7), opacity: 0.5, rotate: degrees(45),
-        });
+        // Convert screen % coordinates to PDF point coordinates (PDF origin is bottom-left)
+        const pdfX = (watermarkPos.x / 100) * width;
+        const pdfY = height - ((watermarkPos.y / 100) * height);
+        page.drawText(textInput, { x: pdfX, y: pdfY, size: 45, color: rgb(0.7, 0.7, 0.7), opacity: 0.5, rotate: degrees(45) });
       });
       await checkInternetAndDownload(new Blob([await pdfDoc.save()], { type: 'application/pdf' }), 'Watermarked_' + files[0].name, 'Watermarked PDF');
-    } catch (e) { alert('Failed to apply watermark'); setIsProcessing(false); setStatus(''); }
+    } catch (e) { alert('Failed'); setIsProcessing(false); setStatus(''); }
   };
 
+  // 🔴 NAYA: Interactive Editor Engine (Multiple Texts anywhere)
   const runPdfEditor = async () => {
-    if (!textInput) return alert('Enter text to add to document header!');
-    setIsProcessing(true);
-    setStatus("Editing Document...");
+    if (editorTexts.length === 0) return alert('Tap anywhere on the document to add text!');
+    setIsProcessing(true); setStatus("Saving Document...");
     try {
       const pdfDoc = await PDFDocument.load(await readFile(files[0].file));
       const pages = pdfDoc.getPages();
-      pages.forEach((page) => {
-        const { height } = page.getSize();
-        // Adds Header Text to top of every page
-        page.drawText(textInput, { x: 20, y: height - 20, size: 12, color: rgb(0, 0, 0) });
+      
+      // Applying text to the first page (as per standard overlay tools)
+      const firstPage = pages[0];
+      const { width, height } = firstPage.getSize();
+      
+      editorTexts.forEach(item => {
+          if(!item.text) return;
+          const pdfX = (item.x / 100) * width;
+          const pdfY = height - ((item.y / 100) * height) - 10; // Adjust for baseline
+          firstPage.drawText(item.text, { x: pdfX, y: pdfY, size: 14, color: rgb(0.1, 0.1, 0.1) });
       });
+
       await checkInternetAndDownload(new Blob([await pdfDoc.save()], { type: 'application/pdf' }), 'Edited_' + files[0].name, 'Edited PDF');
-    } catch (e) { alert('Failed to edit PDF'); setIsProcessing(false); setStatus(''); }
+    } catch (e) { alert('Failed to edit'); setIsProcessing(false); setStatus(''); }
   };
 
   const runPdfOcr = async () => {
-    setIsProcessing(true);
-    setStatus("Scanning Document...");
+    setIsProcessing(true); setStatus("Scanning...");
     try {
       const buffer = await readFile(files[0].file);
       const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
@@ -391,50 +389,46 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(" ");
-        fullText += `--- Page ${i} ---\n${pageText}\n\n`;
+        fullText += `--- Page ${i} ---\n${textContent.items.map(item => item.str).join(" ")}\n\n`;
       }
       if(!fullText.trim()) throw new Error("No text");
       setExtractedText(fullText);
-      if (onNotify) onNotify("Text Extracted Successfully! 📝", false);
-    } catch (e) { alert("No readable text found. This might be a scanned image PDF without a text layer."); }
-    setIsProcessing(false);
-    setStatus("");
+      if (onNotify) onNotify("Text Extracted! 📝", false);
+    } catch (e) { alert("No readable text found."); }
+    setIsProcessing(false); setStatus("");
   };
 
-
-  // --- UI ACTIONS ---
-  const moveFile = (idx, dir) => {
-    const arr = [...files];
-    const swap = dir === 'up' ? idx - 1 : idx + 1;
-    if (swap >= 0 && swap < arr.length) {
-      [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
-      setFiles(arr);
-    }
-  };
-  const deletePageUi = (idx) => { const n = [...pageData]; n.splice(idx, 1); setPageData(n); };
-  const rotatePageUi = (idx) => { const n = [...pageData]; n[idx].rotation += 90; setPageData(n); };
-  const movePageUi = (idx, dir) => {
-    const n = [...pageData];
-    const s = dir === 'l' ? idx - 1 : idx + 1;
-    if (s >= 0 && s < n.length) { [n[idx], n[s]] = [n[s], n[idx]]; setPageData(n); }
+  // --- INTERACTIVE UI HELPERS ---
+  const handleTouchMoveWatermark = (e) => {
+      if(!previewContainerRef.current) return;
+      const rect = previewContainerRef.current.getBoundingClientRect();
+      const touch = e.touches ? e.touches[0] : e;
+      let x = ((touch.clientX - rect.left) / rect.width) * 100;
+      let y = ((touch.clientY - rect.top) / rect.height) * 100;
+      // Clamp values between 0 and 100
+      x = Math.max(0, Math.min(100, x)); y = Math.max(0, Math.min(100, y));
+      setWatermarkPos({ x, y });
   };
 
-  const handleDragStart = (idx) => setDraggedItem(idx);
-  const handleDrop = (idx) => {
-    if (draggedItem === null || draggedItem === idx) return;
-    const n = [...pageData];
-    const item = n.splice(draggedItem, 1)[0];
-    n.splice(idx, 0, item);
-    setPageData(n);
-    setDraggedItem(null);
+  const handleEditorTap = (e) => {
+      if(!previewContainerRef.current) return;
+      const rect = previewContainerRef.current.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = ((clientX - rect.left) / rect.width) * 100;
+      const y = ((clientY - rect.top) / rect.height) * 100;
+      
+      setEditorTexts([...editorTexts, { id: Date.now(), text: '', x, y }]);
   };
+
+  const updateEditorText = (id, newText) => {
+      setEditorTexts(editorTexts.map(t => t.id === id ? { ...t, text: newText } : t));
+  };
+
 
   return (
-    // THEMED WRAPPER
     <div style={{ padding: '20px', height: '100%', overflowY: 'auto', paddingBottom: '100px', background: 'var(--bg-main)', color: 'var(--text-main)', transition: 'background-color 0.3s', position: 'relative' }}>
       
-      {/* PROCESSING SPINNER OVERLAY */}
       {isProcessing && (
         <div style={{position: 'absolute', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000}}>
             <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
@@ -444,39 +438,27 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
 
       <input type="file" ref={fileInputRef} style={{ display: 'none' }} multiple={['merge', 'img-to-pdf'].includes(activeTool)} accept={activeTool === 'img-to-pdf' ? 'image/*' : 'application/pdf'} onChange={handleUpload} />
 
-      {/* HEADER WITH PREMIUM TOGGLE */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <button onClick={() => activeTool === 'menu' ? onBack() : setActiveTool('menu') } style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', cursor: 'pointer', touchAction: 'manipulation' }}>
-            <Icons.Back />
-          </button>
+          <button onClick={() => activeTool === 'menu' ? onBack() : setActiveTool('menu') } style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', cursor: 'pointer', touchAction: 'manipulation' }}><Icons.Back /></button>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: 'var(--text-main)' }}>PDF Master</h2>
         </div>
-        <button onClick={() => setIsPremium(!isPremium)} style={{ padding: '6px 15px', borderRadius: '20px', border: 'none', background: isPremium ? '#f59e0b' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', touchAction: 'manipulation' }}>
-          <Icons.Crown /> {isPremium ? 'Premium' : 'Free'}
-        </button>
+        <button onClick={() => setIsPremium(!isPremium)} style={{ padding: '6px 15px', borderRadius: '20px', border: 'none', background: isPremium ? '#f59e0b' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', touchAction: 'manipulation' }}><Icons.Crown /> {isPremium ? 'Premium' : 'Free'}</button>
       </div>
 
       {activeTool === 'menu' ? (
         <div>
-          {/* Top Tools Grid (Now 15 Tools) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
             {tools.slice(0, 15).map((t) => (
               <button key={t.id} onClick={() => handleToolClick(t.id)} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', aspectRatio: '1/1', padding: '10px', touchAction: 'manipulation' }}>
-                <div style={{ background: t.color, color: 'white', width: '45px', height: '45px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '5px', boxShadow: `0 4px 10px ${t.color}40` }}>
-                  {t.icon}
-                </div>
+                <div style={{ background: t.color, color: 'white', width: '45px', height: '45px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '5px', boxShadow: `0 4px 10px ${t.color}40` }}>{t.icon}</div>
                 <span style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-main)' }}>{t.label}</span>
               </button>
             ))}
           </div>
-
-          {/* VIEW PDF FULL WIDTH BUTTON */}
           <div style={{ marginTop: '15px' }}>
             <button onClick={() => handleToolClick('view')} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', display: 'flex', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', width: '100%', padding: '15px', gap: '15px', touchAction: 'manipulation' }}>
-              <div style={{ background: tools[15].bg, color: tools[15].color, width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {tools[15].icon}
-              </div>
+              <div style={{ background: tools[15].bg, color: tools[15].color, width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{tools[15].icon}</div>
               <div style={{ textAlign: 'left' }}>
                 <h4 style={{ margin: 0, fontSize: '16px', color: 'var(--text-main)', fontWeight: '700' }}>{tools[15].label}</h4>
                 <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>Read PDFs Smoothly</p>
@@ -488,12 +470,10 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
         <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '24px', textAlign: 'center', border: '1px solid var(--border-color)' }}>
           <h3 style={{ textTransform: 'capitalize', fontSize: '18px', marginBottom: '15px', color: 'var(--text-main)' }}>{activeTool.replace(/-/g, ' ')}</h3>
 
-          {/* TEXT MODE */}
           {activeTool === 'text-to-pdf' ? (
             <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Type here..." style={{ width: '100%', height: '150px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)' }} />
           ) : (
             <div style={{ minHeight: '200px' }}>
-              {/* MANUAL UPLOAD BUTTON */}
               {files.length === 0 ? (
                 <label style={{ border: '2px dashed var(--border-color)', padding: '30px', borderRadius: '15px', cursor: 'pointer', display: 'block', color: 'var(--text-muted)', background: 'var(--bg-input)', touchAction: 'manipulation' }} onClick={() => fileInputRef.current.click()}>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}><Icons.Upload /></div>
@@ -502,107 +482,77 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   
-                  {/* SCROLL VIEWER */}
                   {activeTool === 'view' && (
                     <div style={{ border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden', marginBottom: '10px' }}>
-                      <div style={{ background: '#1e293b', padding: '10px', color: 'white', fontWeight: 'bold', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{files[0]?.name || 'Document'}</span><span>{viewPagesCount} Pages</span>
-                      </div>
+                      <div style={{ background: '#1e293b', padding: '10px', color: 'white', fontWeight: 'bold', fontSize: '13px', display: 'flex', justifyContent: 'space-between' }}><span>{files[0]?.name || 'Document'}</span><span>{viewPagesCount} Pages</span></div>
                       <div style={{ height: '450px', background: 'var(--bg-input)', overflowY: 'auto', padding: '15px 10px', display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
-                        {Array.from({ length: viewPagesCount }).map((_, index) => (
-                            <canvas key={index} id={`pdf-page-${index + 1}`} style={{ maxWidth: '100%', background: 'white', boxShadow: '0 4px 6px rgba(0,0,0,0.15)' }}></canvas>
-                        ))}
+                        {Array.from({ length: viewPagesCount }).map((_, index) => ( <canvas key={index} id={`pdf-page-${index + 1}`} style={{ maxWidth: '100%', background: 'white', boxShadow: '0 4px 6px rgba(0,0,0,0.15)' }}></canvas> ))}
                       </div>
                     </div>
                   )}
 
-                  {/* NAYA: OCR TEXT VIEWER */}
                   {activeTool === 'pdf-ocr' && (
-                     extractedText ? (
-                         <textarea value={extractedText} readOnly style={{ width: '100%', height: '250px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', fontSize: '13px', lineHeight: '1.5' }} />
-                     ) : (
-                         <div style={{background: 'var(--bg-input)', padding: '15px', borderRadius: '12px', textAlign: 'center'}}>
-                             <p style={{color: 'var(--text-main)', fontSize: '14px', fontWeight: 'bold'}}>File Selected: {files[0].name}</p>
-                             <p style={{color: 'var(--text-muted)', fontSize: '12px'}}>Click below to extract readable text from this PDF.</p>
+                     extractedText ? ( <textarea value={extractedText} readOnly style={{ width: '100%', height: '250px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', fontSize: '13px', lineHeight: '1.5' }} />
+                     ) : ( <div style={{background: 'var(--bg-input)', padding: '15px', borderRadius: '12px', textAlign: 'center'}}> <p style={{color: 'var(--text-main)', fontSize: '14px', fontWeight: 'bold'}}>File Selected: {files[0].name}</p> <p style={{color: 'var(--text-muted)', fontSize: '12px'}}>Click below to extract readable text.</p> </div> )
+                  )}
+
+                  {/* 🔴 NAYA: INTERACTIVE WATERMARK PREVIEW */}
+                  {activeTool === 'watermark' && previewImg && (
+                      <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+                         <input type="text" value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder="Type Watermark Text here..." style={{ width: '100%', padding: '12px', border: '2px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', borderRadius: '10px', fontSize: '14px' }} />
+                         <p style={{fontSize: '11px', color: '#3b82f6', fontWeight:'bold', margin:0}}>Drag the text below to position it</p>
+                         
+                         <div ref={previewContainerRef} style={{position: 'relative', width: '100%', aspectRatio: `${pdfDimensions.width}/${pdfDimensions.height}`, backgroundImage: `url(${previewImg})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', touchAction: 'none' }}>
+                             
+                             <div 
+                                onTouchMove={handleTouchMoveWatermark} 
+                                onMouseMove={(e) => e.buttons === 1 && handleTouchMoveWatermark(e)}
+                                style={{ position: 'absolute', left: `${watermarkPos.x}%`, top: `${watermarkPos.y}%`, transform: 'translate(-50%, -50%) rotate(-45deg)', color: 'rgba(0,0,0,0.4)', fontSize: '30px', fontWeight: 'bold', cursor: 'move', whiteSpace: 'nowrap', userSelect: 'none', padding: '20px' }}>
+                                {textInput || "YOUR WATERMARK"}
+                             </div>
                          </div>
-                     )
-                  )}
-
-                  {/* COMPRESS PDF LOGIC UI */}
-                  {activeTool === 'compress' && (
-                    <div style={{ background: 'var(--bg-input)', padding: '15px', borderRadius: '12px', textAlign: 'left' }}>
-                      <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>Select Compression Level</p>
-                      <input type="range" min="10" max="90" value={compressLevel} onChange={(e) => setCompressLevel(e.target.value)} style={{ width: '100%', cursor: 'pointer', touchAction: 'manipulation' }} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}>
-                        <span>Better Quality</span><span>Smaller Size</span>
                       </div>
-                      <p style={{ fontSize: '13px', color: '#2563eb', fontWeight: 'bold', marginTop: '10px' }}>Estimated Size: ~{formatSize(files[0].size * (1 - compressLevel / 100))}</p>
-                    </div>
                   )}
 
-                  {/* IMAGE TO PDF REDUCE QUALITY */}
-                  {activeTool === 'img-to-pdf' && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-input)', padding: '15px', borderRadius: '12px', cursor: 'pointer', touchAction: 'manipulation' }}>
-                      <input type="checkbox" checked={reduceQuality} onChange={(e) => setReduceQuality(e.target.checked)} style={{ width: '18px', height: '18px' }} />
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>Reduce Image Quality (Smaller PDF)</span>
-                    </label>
-                  )}
-
-                  {/* NAYA: WATERMARK / EDITOR UI */}
-                  {(activeTool === 'watermark' || activeTool === 'pdf-editor') && (
-                    <input type="text" value={textInput} onChange={(e) => setTextInput(e.target.value)} placeholder={activeTool === 'watermark' ? "Enter Watermark Text (e.g. CONFIDENTIAL)" : "Enter Header Text to add to pages"} style={{ width: '100%', padding: '15px', border: '2px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', borderRadius: '10px', fontSize: '14px' }} />
-                  )}
-
-                  {/* MERGE LIST VIEW */}
-                  {!['delete', 'rotate', 'organize', 'view', 'pdf-ocr', 'watermark', 'pdf-editor'].includes(activeTool) &&
-                    files.map((f, i) => (
-                      <div key={f.id} style={{ padding: '10px', background: 'var(--bg-input)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '12px', fontWeight: '600', maxWidth: '70%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-main)' }}>{f.name}</span>
-                        {activeTool === 'merge' && (
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                            <button onClick={() => moveFile(i, 'up')} style={{ border: 'none', background: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', cursor: 'pointer', touchAction: 'manipulation' }}><Icons.MoveUp /></button>
-                            <button onClick={() => moveFile(i, 'down')} style={{ border: 'none', background: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', cursor: 'pointer', touchAction: 'manipulation' }}><Icons.MoveDown /></button>
-                          </div>
-                        )}
+                  {/* 🔴 NAYA: INTERACTIVE EDITOR PREVIEW */}
+                  {activeTool === 'pdf-editor' && previewImg && (
+                      <div style={{display:'flex', flexDirection:'column', gap:'10px'}}>
+                         <p style={{fontSize: '11px', color: '#3b82f6', fontWeight:'bold', margin:0}}>Tap anywhere on the document to add text</p>
+                         
+                         <div 
+                            ref={previewContainerRef} 
+                            onClick={handleEditorTap}
+                            style={{position: 'relative', width: '100%', aspectRatio: `${pdfDimensions.width}/${pdfDimensions.height}`, backgroundImage: `url(${previewImg})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', cursor: 'text' }}>
+                             
+                             {editorTexts.map((item) => (
+                                 <input 
+                                     key={item.id}
+                                     autoFocus
+                                     onClick={(e) => e.stopPropagation()}
+                                     value={item.text}
+                                     onChange={(e) => updateEditorText(item.id, e.target.value)}
+                                     placeholder="Type..."
+                                     style={{ position: 'absolute', left: `${item.x}%`, top: `${item.y}%`, transform: 'translateY(-50%)', background: 'transparent', border: '1px dashed #3b82f6', color: 'black', fontSize: '14px', padding: '2px', outline: 'none', minWidth: '100px' }}
+                                 />
+                             ))}
+                         </div>
                       </div>
-                    ))}
-
-                  {/* GRID FIX (NO OVERLAP) */}
-                  {['delete', 'rotate', 'organize'].includes(activeTool) && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '12px', maxHeight: '350px', overflowY: 'auto', padding: '5px' }}>
-                      {pageData.map((p, i) => (
-                        <div key={i} draggable={activeTool === 'organize'} onDragStart={() => handleDragStart(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop(i)} style={{ background: 'var(--bg-input)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', cursor: activeTool === 'organize' ? 'grab' : 'default', touchAction: activeTool === 'organize' ? 'none' : 'manipulation' }}>
-                          <div onClick={() => activeTool === 'delete' && deletePageUi(i)} style={{ height: '120px', background: 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: activeTool === 'delete' ? 'pointer' : '' }}>
-                            {p.thumbnail ? ( <img src={p.thumbnail} alt={`Page ${i}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform: `rotate(${p.rotation}deg)`, transition: '0.3s' }} /> ) : ( <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Pg {p.originalIndex + 1}</span> )}
-                            <span style={{ position: 'absolute', top: 4, left: 4, fontSize: '10px', fontWeight: 'bold', background: 'rgba(255,255,255,0.9)', color: 'black', padding: '2px 6px', borderRadius: '10px' }}>{i + 1}</span>
-                            {activeTool === 'delete' && ( <div style={{ position: 'absolute', inset: 0, background: 'rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, ':hover': { opacity: 1 } }}> <div style={{ background: '#ef4444', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '10px' }}>Delete</div> </div> )}
-                          </div>
-                          <div style={{ background: 'var(--bg-card)', display: 'flex', justifyContent: 'center', borderTop: '1px solid var(--border-color)' }}>
-                            {activeTool === 'delete' && ( <button onClick={() => deletePageUi(i)} style={{ width: '100%', padding: '8px', background: 'transparent', border: 'none', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', touchAction: 'manipulation' }}>Delete</button> )}
-                            {activeTool === 'rotate' && ( <button onClick={(e) => { e.stopPropagation(); rotatePageUi(i); }} style={{ width: '100%', padding: '8px', background: 'transparent', border: 'none', color: '#2563eb', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', touchAction: 'manipulation' }}>Rotate ↻</button> )}
-                            {activeTool === 'organize' && ( <div style={{ display: 'flex', width: '100%' }}> <button onClick={(e) => { e.stopPropagation(); movePageUi(i, 'l'); }} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', borderRight: '1px solid var(--border-color)', color: 'var(--text-main)', cursor: 'pointer', touchAction: 'manipulation' }}>◀</button> <button onClick={(e) => { e.stopPropagation(); movePageUi(i, 'r'); }} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', color: 'var(--text-main)', cursor: 'pointer', touchAction: 'manipulation' }}>▶</button> </div> )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   )}
 
-                  {activeTool === 'rename' && (
-                    <input type="text" value={renameText} onChange={(e) => setRenameText(e.target.value)} placeholder="New Name" style={{ width: '100%', padding: '15px', marginTop: '10px', border: '2px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', borderRadius: '10px', fontSize: '16px' }} />
-                  )}
+                  {activeTool === 'compress' && ( <div style={{ background: 'var(--bg-input)', padding: '15px', borderRadius: '12px', textAlign: 'left' }}> <p style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>Select Compression Level</p> <input type="range" min="10" max="90" value={compressLevel} onChange={(e) => setCompressLevel(e.target.value)} style={{ width: '100%', cursor: 'pointer', touchAction: 'manipulation' }} /> <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginTop: '5px' }}> <span>Better Quality</span><span>Smaller Size</span> </div> <p style={{ fontSize: '13px', color: '#2563eb', fontWeight: 'bold', marginTop: '10px' }}>Estimated Size: ~{formatSize(files[0].size * (1 - compressLevel / 100))}</p> </div> )}
+                  {activeTool === 'img-to-pdf' && ( <label style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-input)', padding: '15px', borderRadius: '12px', cursor: 'pointer', touchAction: 'manipulation' }}> <input type="checkbox" checked={reduceQuality} onChange={(e) => setReduceQuality(e.target.checked)} style={{ width: '18px', height: '18px' }} /> <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>Reduce Image Quality (Smaller PDF)</span> </label> )}
 
-                  {/* NAYA: Hide "Select Another File" if viewing OCR text */}
-                  {!(activeTool === 'pdf-ocr' && extractedText) && (
-                      <button onClick={() => { setFiles([]); if (fileInputRef.current) fileInputRef.current.click(); }} style={{ color: '#ef4444', background: 'none', border: 'none', marginTop: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', touchAction: 'manipulation' }}>
-                        Select Another File
-                      </button>
-                  )}
+                  {!['delete', 'rotate', 'organize', 'view', 'pdf-ocr', 'watermark', 'pdf-editor'].includes(activeTool) && files.map((f, i) => ( <div key={f.id} style={{ padding: '10px', background: 'var(--bg-input)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}> <span style={{ fontSize: '12px', fontWeight: '600', maxWidth: '70%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-main)' }}>{f.name}</span> {activeTool === 'merge' && ( <div style={{ display: 'flex', gap: '5px' }}> <button onClick={() => moveFile(i, 'up')} style={{ border: 'none', background: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', cursor: 'pointer', touchAction: 'manipulation' }}><Icons.MoveUp /></button> <button onClick={() => moveFile(i, 'down')} style={{ border: 'none', background: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', cursor: 'pointer', touchAction: 'manipulation' }}><Icons.MoveDown /></button> </div> )} </div> ))}
+
+                  {['delete', 'rotate', 'organize'].includes(activeTool) && ( <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '12px', maxHeight: '350px', overflowY: 'auto', padding: '5px' }}> {pageData.map((p, i) => ( <div key={i} draggable={activeTool === 'organize'} onDragStart={() => handleDragStart(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop(i)} style={{ background: 'var(--bg-input)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', cursor: activeTool === 'organize' ? 'grab' : 'default', touchAction: activeTool === 'organize' ? 'none' : 'manipulation' }}> <div onClick={() => activeTool === 'delete' && deletePageUi(i)} style={{ height: '120px', background: 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: activeTool === 'delete' ? 'pointer' : '' }}> {p.thumbnail ? ( <img src={p.thumbnail} alt={`Page ${i}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform: `rotate(${p.rotation}deg)`, transition: '0.3s' }} /> ) : ( <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Pg {p.originalIndex + 1}</span> )} <span style={{ position: 'absolute', top: 4, left: 4, fontSize: '10px', fontWeight: 'bold', background: 'rgba(255,255,255,0.9)', color: 'black', padding: '2px 6px', borderRadius: '10px' }}>{i + 1}</span> {activeTool === 'delete' && ( <div style={{ position: 'absolute', inset: 0, background: 'rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, ':hover': { opacity: 1 } }}> <div style={{ background: '#ef4444', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '10px' }}>Delete</div> </div> )} </div> <div style={{ background: 'var(--bg-card)', display: 'flex', justifyContent: 'center', borderTop: '1px solid var(--border-color)' }}> {activeTool === 'delete' && ( <button onClick={() => deletePageUi(i)} style={{ width: '100%', padding: '8px', background: 'transparent', border: 'none', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', touchAction: 'manipulation' }}>Delete</button> )} {activeTool === 'rotate' && ( <button onClick={(e) => { e.stopPropagation(); rotatePageUi(i); }} style={{ width: '100%', padding: '8px', background: 'transparent', border: 'none', color: '#2563eb', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', touchAction: 'manipulation' }}>Rotate ↻</button> )} {activeTool === 'organize' && ( <div style={{ display: 'flex', width: '100%' }}> <button onClick={(e) => { e.stopPropagation(); movePageUi(i, 'l'); }} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', borderRight: '1px solid var(--border-color)', color: 'var(--text-main)', cursor: 'pointer', touchAction: 'manipulation' }}>◀</button> <button onClick={(e) => { e.stopPropagation(); movePageUi(i, 'r'); }} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', color: 'var(--text-main)', cursor: 'pointer', touchAction: 'manipulation' }}>▶</button> </div> )} </div> </div> ))} </div> )}
+
+                  {activeTool === 'rename' && ( <input type="text" value={renameText} onChange={(e) => setRenameText(e.target.value)} placeholder="New Name" style={{ width: '100%', padding: '15px', marginTop: '10px', border: '2px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', borderRadius: '10px', fontSize: '16px' }} /> )}
+                  {!(activeTool === 'pdf-ocr' && extractedText) && ( <button onClick={() => { setFiles([]); if (fileInputRef.current) fileInputRef.current.click(); }} style={{ color: '#ef4444', background: 'none', border: 'none', marginTop: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', touchAction: 'manipulation' }}>Select Another File</button> )}
                 </div>
               )}
             </div>
           )}
 
-          {/* MAIN DOWNLOAD BUTTON */}
           {(files.length > 0 || (activeTool === 'text-to-pdf' && textInput.length > 0)) && !['view'].includes(activeTool) && (
               <button
                 onClick={async () => {
@@ -614,22 +564,13 @@ const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
                   else if (activeTool === 'pdf-to-img') runPdfToImg();
                   else if (activeTool === 'compress') runCompress();
                   else if (activeTool === 'rename') runRename();
-                  else if (activeTool === 'watermark') runWatermark(); // NEW
-                  else if (activeTool === 'pdf-editor') runPdfEditor(); // NEW
-                  else if (activeTool === 'pdf-ocr') {
-                      // Logic to either Extract or Download the extracted text
-                      if (!extractedText) runPdfOcr();
-                      else {
-                          const txtBlob = new Blob([extractedText], { type: 'text/plain' });
-                          await checkInternetAndDownload(txtBlob, `Extracted_${files[0].name}.txt`, 'Extracted Text');
-                      }
-                  }
+                  else if (activeTool === 'watermark') runWatermark(); 
+                  else if (activeTool === 'pdf-editor') runPdfEditor(); 
+                  else if (activeTool === 'pdf-ocr') { if (!extractedText) runPdfOcr(); else { const txtBlob = new Blob([extractedText], { type: 'text/plain' }); await checkInternetAndDownload(txtBlob, `Extracted_${files[0].name}.txt`, 'Extracted Text'); } }
                   else if (['delete', 'rotate', 'organize'].includes(activeTool)) runPageOps();
                 }}
                 disabled={isProcessing}
-                style={{
-                  background: '#2563eb', color: 'white', padding: '16px', borderRadius: '16px', border: 'none', marginTop: '20px', width: '100%', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.4)', cursor: isProcessing ? 'not-allowed' : 'pointer', touchAction: 'manipulation'
-                }}
+                style={{ background: '#2563eb', color: 'white', padding: '16px', borderRadius: '16px', border: 'none', marginTop: '20px', width: '100%', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.4)', cursor: isProcessing ? 'not-allowed' : 'pointer', touchAction: 'manipulation' }}
               >
                 {isProcessing ? status || 'Processing...' : (activeTool === 'pdf-ocr' && !extractedText ? 'Extract Text' : (activeTool === 'pdf-ocr' && extractedText ? 'Download TXT File' : 'Download & Save'))}
               </button>

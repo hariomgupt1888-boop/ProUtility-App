@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal";
+import { Capacitor } from '@capacitor/core'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
+import { Media } from '@capacitor-community/media'; 
 
-// --- 100% Native SVG Icons (No external libraries needed) ---
+// --- 100% Native SVG Icons ---
 const Icons = {
   Back: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
   Eraser: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20.5H9" /><path d="M8.7 6.7l10.6 10.6c.9.9.9 2.5 0 3.4v0c-.9.9-2.5.9-3.4 0L5.3 10.1c-.9-.9-.9-2.5 0-3.4v0c.9-.9 2.5-.9 3.4 0z" /></svg>,
@@ -21,7 +24,6 @@ const BgRemover = ({ onBack, onNotify }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressText, setProgressText] = useState('');
   
-  // --- PREMIUM & AD STATES ---
   const [isPremium, setIsPremium] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -50,6 +52,9 @@ const BgRemover = ({ onBack, onNotify }) => {
     const file = e.target.files[0];
     if (file) {
       const img = new Image();
+      // 🔴 NAYA FIX 1: Tainted Canvas Error rokne ke liye
+      img.crossOrigin = "anonymous"; 
+      
       img.onload = () => {
         const MAX_WIDTH = 800;
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
@@ -64,6 +69,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         setImage(url);
         
         originalImgRef.current = new Image();
+        originalImgRef.current.crossOrigin = "anonymous";
         originalImgRef.current.src = url;
       };
       img.src = URL.createObjectURL(file);
@@ -78,9 +84,11 @@ const BgRemover = ({ onBack, onNotify }) => {
     setProgressText('Downloading AI Model... (Once)');
     
     try {
+      // 🔴 NAYA FIX 2: CORS Bypass logic for WebView
       const config = {
-        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.3/dist/", 
+        publicPath: "https://unpkg.com/@imgly/background-removal@1.4.3/dist/", 
         model: 'small', 
+        fetchArgs: { mode: 'cors' }, // WebView ko block karne se rokne ke liye
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             setProgressText(`Loading AI... ${percent}%`);
@@ -92,7 +100,6 @@ const BgRemover = ({ onBack, onNotify }) => {
       setProcessedImage(url);
       setEditMode('move'); 
       
-      // Reset history exactly when new image loads
       historyRef.current = [];
       redoRef.current = [];
       setHistoryCount(0);
@@ -106,7 +113,6 @@ const BgRemover = ({ onBack, onNotify }) => {
       historyRef.current = [];
       redoRef.current = [];
       setHistoryCount(0);
-
     } finally {
       setIsProcessing(false);
     }
@@ -116,22 +122,23 @@ const BgRemover = ({ onBack, onNotify }) => {
     if (processedImage && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
       const img = new Image();
+      img.crossOrigin = "anonymous"; // Ensure transparency saves
       img.onload = () => {
         canvasRef.current.width = img.width;
         canvasRef.current.height = img.height;
         ctx.drawImage(img, 0, 0);
-        saveHistoryState(); // Initial save
+        saveHistoryState(); 
       };
       img.src = processedImage;
     }
   }, [processedImage]);
 
-  // --- 🔥 FIXED: UNDO / REDO ENGINE ---
+  // --- UNDO / REDO ENGINE ---
   const saveHistoryState = () => {
     if (canvasRef.current) {
         redoRef.current = [];
-        if(historyRef.current.length > 15) historyRef.current.shift(); // Keep last 15 states
-        const stateUrl = canvasRef.current.toDataURL('image/png'); // Strict PNG save for transparency
+        if(historyRef.current.length > 15) historyRef.current.shift(); 
+        const stateUrl = canvasRef.current.toDataURL('image/png'); 
         historyRef.current.push(stateUrl);
         setHistoryCount(historyRef.current.length);
     }
@@ -142,9 +149,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       img.onload = () => {
           if(!canvasRef.current) return;
           const ctx = canvasRef.current.getContext('2d');
-          // MUST clear canvas completely before drawing previous transparent state
           ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-          // IMPORTANT: Reset globalCompositeOperation to default before redrawing
           ctx.globalCompositeOperation = 'source-over';
           ctx.drawImage(img, 0, 0);
       };
@@ -155,11 +160,8 @@ const BgRemover = ({ onBack, onNotify }) => {
     if (historyRef.current.length > 1) {
         const currentState = historyRef.current.pop();
         redoRef.current.push(currentState);
-        
-        // Load the new last state
         const prevState = historyRef.current[historyRef.current.length - 1];
         drawStateToCanvas(prevState);
-        
         setHistoryCount(historyRef.current.length);
     }
   };
@@ -168,9 +170,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       if (redoRef.current.length > 0) {
           const nextState = redoRef.current.pop();
           historyRef.current.push(nextState);
-          
           drawStateToCanvas(nextState);
-          
           setHistoryCount(historyRef.current.length);
       }
   };
@@ -180,14 +180,9 @@ const BgRemover = ({ onBack, onNotify }) => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    return { 
-        x: (clientX - rect.left) * scaleX, 
-        y: (clientY - rect.top) * scaleY 
-    };
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
   };
 
   const handlePointerDown = (e) => {
@@ -196,7 +191,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         lastPos.current = { x: e.touches ? e.touches[0].clientX : e.clientX, y: e.touches ? e.touches[0].clientY : e.clientY };
         return;
     }
-    
     isDragging.current = true;
     paint(e);
   };
@@ -204,7 +198,6 @@ const BgRemover = ({ onBack, onNotify }) => {
   const handlePointerMove = (e) => {
     if (!isDragging.current) return;
     e.preventDefault(); 
-
     if (editMode === 'move') {
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
@@ -216,16 +209,13 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   const handlePointerUp = () => { 
-      if(isDragging.current && (editMode === 'erase' || editMode === 'restore')){
-          saveHistoryState(); 
-      }
+      if(isDragging.current && (editMode === 'erase' || editMode === 'restore')){ saveHistoryState(); }
       isDragging.current = false; 
   };
 
   const paint = (e) => {
     const ctx = canvasRef.current.getContext('2d');
     const { x, y } = getCanvasCoords(e);
-    
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = brushSize;
@@ -256,53 +246,78 @@ const BgRemover = ({ onBack, onNotify }) => {
         const ctx = canvasRef.current.getContext('2d');
         ctx.beginPath();
         handlePointerDown(e);
-      } else {
-        handlePointerDown(e);
-      }
-  }
+      } else { handlePointerDown(e); }
+  };
 
-  // --- 🔥 THE AD & PREMIUM GATEKEEPER LOGIC ---
-  // 🔴 THE FIX: Added 'blob' parameter
-  const checkInternetAndDownload = (dataUrl, fileName, blob) => {
-    const executeDownload = () => {
-      const link = document.createElement('a');
-      link.download = fileName;
-      link.href = dataUrl;
-      link.click();
-      setIsSaving(false);
-      setSaveStatus("");
-      
-      // 🔴 THE FIX: Passing the blob to onNotify
-      if(onNotify) onNotify("Cutout Saved to Gallery! ✅", false, fileName, "Image Cutout", blob);
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // --- 🔴 NAYA FIX 3: 100% NATIVE GALLERY SAVE GATEKEEPER ---
+  const checkInternetAndDownload = async (dataUrl, fileName, blob) => {
+    const executeDownload = async () => {
+      try {
+        if (Capacitor.isNativePlatform()) {
+           setSaveStatus("Saving to Gallery...");
+           await Filesystem.requestPermissions();
+
+           const base64Data = await blobToBase64(blob);
+           const savedFile = await Filesystem.writeFile({
+             path: `ProUtility_Cutout_${Date.now()}.png`, // PNG ensures transparency is kept
+             data: base64Data,
+             directory: Directory.Cache 
+           });
+
+           await Media.savePhoto({ path: savedFile.uri });
+        } 
+        else {
+           const link = document.createElement('a');
+           link.download = fileName;
+           link.href = dataUrl;
+           link.click();
+        }
+
+        setIsSaving(false);
+        setSaveStatus("");
+        if(onNotify) onNotify("Cutout Saved to Gallery! ✅", false, fileName, "Image Cutout", blob);
+
+      } catch (error) {
+        console.error("Save Error: ", error);
+        alert("⚠️ Permission Required!\nPlease allow access to save images to your Gallery.");
+        setIsSaving(false);
+        setSaveStatus("");
+      }
     };
 
     if (isPremium) {
-      executeDownload();
+      await executeDownload();
       return;
     }
 
     if (navigator.onLine) {
       setIsSaving(true);
       setSaveStatus("Loading Ad...");
-      
-      setTimeout(() => {
-        // Real AdMob logic later
-        executeDownload();
-      }, 2000); 
+      setTimeout(async () => { await executeDownload(); }, 2000); 
     } else {
       alert("⚠️ Internet Required!\n\nFree users need internet to save images. Enable internet to watch a quick Ad, or Upgrade to Premium for offline saving.");
+      setIsSaving(false);
+      setSaveStatus("");
     }
   };
 
-  // 🔴 THE FIX: Converted handleSave to async to extract the Blob correctly
   const handleSave = async () => {
     if (canvasRef.current && !isSaving) {
-        // Strict PNG export to keep the background transparent
+        // Must be image/png to keep background transparent!
         const dataUrl = canvasRef.current.toDataURL('image/png');
         try {
             const response = await fetch(dataUrl);
             const blob = await response.blob();
-            checkInternetAndDownload(dataUrl, 'ProUtility_Cutout.png', blob);
+            await checkInternetAndDownload(dataUrl, `Cutout_${Date.now()}.png`, blob);
         } catch (e) {
             console.error("Failed to convert to blob", e);
             alert("Failed to save image.");
@@ -313,32 +328,16 @@ const BgRemover = ({ onBack, onNotify }) => {
   const S = {
     wrapper: { position: 'fixed', inset: 0, background: '#0f172a', display: 'flex', flexDirection: 'column', zIndex: 9999, color: 'white', touchAction: 'none', userSelect: 'none' },
     header: { height: '60px', background: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #334155' },
-    
     workArea: { flex: 1, position: 'relative', overflow: 'hidden', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' },
     checkerboard: { position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)', backgroundSize: '20px 20px' },
-    
-    container: { 
-        transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, 
-        transformOrigin: 'center', 
-        transition: isDragging.current ? 'none' : 'transform 0.1s',
-        position: 'relative'
-    },
-    
-    ghostImg: { 
-        position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-        opacity: editMode === 'restore' ? 0.4 : 0, 
-        transition: 'opacity 0.3s', pointerEvents: 'none'
-    },
-
+    container: { transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s', position: 'relative' },
+    ghostImg: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: editMode === 'restore' ? 0.4 : 0, transition: 'opacity 0.3s', pointerEvents: 'none' },
     bottomBar: { background: '#1e293b', borderTop: '1px solid #334155', paddingBottom: 'env(safe-area-inset-bottom)' },
-    
     actionRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 20px', background: '#0f172a', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' },
     undoGroup: { display: 'flex', gap: '20px' },
-    
     sliderWrapper: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '15px' },
     sliderPreview: { background:'white', borderRadius:'50%', border:'2px solid #2563eb', transition:'0.1s' },
     sliderInput: { width: '130px', accentColor: '#2563eb', height: '4px', cursor:'pointer' },
-
     tabBar: { display: 'flex', justifyContent: 'space-around', padding: '15px 10px' },
     tabBtn: (isActive) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: isActive ? '#3b82f6' : '#94a3b8', background: 'none', border: 'none', fontSize: '12px', fontWeight: '600', minWidth: '70px', cursor:'pointer' })
   };
@@ -347,7 +346,6 @@ const BgRemover = ({ onBack, onNotify }) => {
     <div style={S.wrapper}>
       <style>{`.spinner { animation: spin 1s linear infinite; } @keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       
-      {/* OVERLAYS FOR PROCESSING & AD SAVING */}
       {(isProcessing || isSaving) && (
          <div style={{position:'absolute', zIndex:50, inset:0, background:'rgba(15,23,42,0.9)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
              <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
@@ -356,7 +354,6 @@ const BgRemover = ({ onBack, onNotify }) => {
          </div>
       )}
 
-      {/* HEADER WITH AD GATEKEEPER */}
       <div style={S.header}>
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
             <button onClick={onBack} style={{background:'none', border:'none', color:'white', cursor:'pointer'}}><Icons.Back/></button>
@@ -364,7 +361,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         </div>
         
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-            {/* PREMIUM TOGGLE BUTTON (For Testing) */}
             <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#e2e8f0', color: isPremium ? '#fff' : '#64748b', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}>
                 <Icons.Crown/> {isPremium ? "Premium" : "Free"}
             </button>
@@ -377,7 +373,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         </div>
       </div>
 
-      {/* MAIN WORKSPACE */}
       <div style={S.workArea}>
          <div style={S.checkerboard}></div>
          
@@ -406,7 +401,6 @@ const BgRemover = ({ onBack, onNotify }) => {
          )}
       </div>
 
-      {/* BOTTOM CONTROLS */}
       <div style={S.bottomBar}>
          {processedImage && (
              <div style={S.actionRow}>
@@ -426,15 +420,9 @@ const BgRemover = ({ onBack, onNotify }) => {
 
          {processedImage ? (
              <div style={S.tabBar}>
-                 <button style={S.tabBtn(editMode === 'move')} onClick={() => setEditMode('move')}>
-                     <Icons.Move /><span>Move</span>
-                 </button>
-                 <button style={S.tabBtn(editMode === 'restore')} onClick={() => setEditMode('restore')}>
-                     <Icons.Brush /><span>Restore</span>
-                 </button>
-                 <button style={S.tabBtn(editMode === 'erase')} onClick={() => setEditMode('erase')}>
-                     <Icons.Eraser /><span>Eraser</span>
-                 </button>
+                 <button style={S.tabBtn(editMode === 'move')} onClick={() => setEditMode('move')}><Icons.Move /><span>Move</span></button>
+                 <button style={S.tabBtn(editMode === 'restore')} onClick={() => setEditMode('restore')}><Icons.Brush /><span>Restore</span></button>
+                 <button style={S.tabBtn(editMode === 'erase')} onClick={() => setEditMode('erase')}><Icons.Eraser /><span>Eraser</span></button>
              </div>
          ) : (
              <div style={{padding:'20px', display:'flex', justifyContent:'center'}}>

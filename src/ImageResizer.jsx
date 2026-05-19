@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
+import { Media } from '@capacitor-community/media'; // 🔴 NAYA: Direct Gallery Save Plugin
 import { 
   ArrowLeft, Upload, Zap, FileBarChart, Sliders, 
   ChevronRight, ArrowRight 
@@ -8,17 +11,14 @@ const Icons = {
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>
 };
 
-// 🔴 Added onNotify here
 const ImageResizer = ({ onBack, onNotify }) => {
   const [images, setImages] = useState([]);
-  const [activeTab, setActiveTab] = useState('quick'); // quick, size, manual
+  const [activeTab, setActiveTab] = useState('quick'); 
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // --- PREMIUM & AD STATES ---
   const [isPremium, setIsPremium] = useState(false);
   const [status, setStatus] = useState("");
 
-  // Settings
   const [settings, setSettings] = useState({
     quality: 0.7,
     targetKB: 100,
@@ -39,27 +39,34 @@ const ImageResizer = ({ onBack, onNotify }) => {
         size: (file.size / 1024).toFixed(0)
       }));
       setImages(newImages);
-      
-      // 🔴 NAYA: Haptic feedback jab image select ho
       if(onNotify) onNotify(null, true);
     }
   };
 
+  // 🔴 NAYA: Superfast Mathematical Estimation (No Lag!)
   useEffect(() => {
-    if (images.length > 0) estimateFileSize();
+    if (images.length === 0) return;
+    
+    const originalKB = parseInt(images[0].size);
+    let estimatedKB = originalKB;
+
+    if (activeTab === 'quick') {
+       // Math formula for instant UI update instead of heavy canvas rendering
+       estimatedKB = Math.floor(originalKB * (settings.quality * 1.2));
+    } else if (activeTab === 'size') {
+       estimatedKB = settings.targetKB;
+    } else if (activeTab === 'manual') {
+       estimatedKB = Math.floor(originalKB * settings.manualQuality);
+    }
+
+    setPreviewInfo({
+      original: originalKB,
+      compressed: Math.max(10, Math.min(estimatedKB, originalKB)) // Minimum 10KB, max original size
+    });
   }, [images, settings, activeTab]);
 
-  const estimateFileSize = async () => {
-    if (images.length === 0) return;
-    const blob = await compressSingleImage(images[0].url, images[0].file);
-    if (blob) {
-      setPreviewInfo({
-        original: images[0].size,
-        compressed: (blob.size / 1024).toFixed(0)
-      });
-    }
-  };
 
+  // 🔴 NAYA: Sirf "Save" dabane par asali compression hoga
   const compressSingleImage = async (url, originalFile) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -77,7 +84,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
           const scale = Math.min(1, Math.sqrt(settings.targetKB * 1024 / originalFile.size));
           w = img.width * scale;
           h = img.height * scale;
-          q = 0.7;
+          q = 0.7; // Fixed quality for size target to ensure clarity
         }
 
         canvas.width = w;
@@ -88,22 +95,59 @@ const ImageResizer = ({ onBack, onNotify }) => {
     });
   };
 
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  };
+
   // --- 🔥 THE AD & PREMIUM GATEKEEPER LOGIC ---
   const checkInternetAndDownload = async (fileList) => {
     const executeDownload = async () => {
-      for (const item of fileList) {
-          const link = document.createElement('a');
-          link.href = URL.createObjectURL(item.blob);
-          link.download = item.fileName;
-          link.click();
-          await new Promise(r => setTimeout(r, 200));
+      try {
+        if (Capacitor.isNativePlatform()) {
+           setStatus("Asking Permission...");
+           await Filesystem.requestPermissions();
+           setStatus("Saving to Gallery...");
+
+           for (const item of fileList) {
+             const base64Data = await blobToBase64(item.blob);
+             
+             // 🔴 NAYA: 100% Gallery Save Fix
+             // Pehle Cache mein likho, fir wahan se Media plugin ke jariye asli Gallery mein dalo
+             const savedFile = await Filesystem.writeFile({
+               path: `ProUtility_Resized_${Date.now()}.jpg`,
+               data: base64Data,
+               directory: Directory.Cache 
+             });
+
+             await Media.savePhoto({ path: savedFile.uri });
+           }
+        } 
+        else {
+           for (const item of fileList) {
+               const link = document.createElement('a');
+               link.href = URL.createObjectURL(item.blob);
+               link.download = item.fileName;
+               link.click();
+               await new Promise(r => setTimeout(r, 200));
+           }
+        }
+
+        setIsProcessing(false);
+        setStatus("");
+        
+        if (onNotify) onNotify("Images Saved to Gallery! 🖼️", false, "Compressed_Images.jpg", "Image Batch", fileList[0].blob);
+
+      } catch (error) {
+        console.error("Save Error: ", error);
+        alert("⚠️ Permission Required!\nPlease allow access to save images to your Gallery.");
+        setIsProcessing(false);
+        setStatus("");
       }
-      
-      setIsProcessing(false);
-      setStatus("");
-      
-      // 🔴 NAYA: Alert hata kar Toast aur Haptic lagaya (First file blob sent to DB as sample)
-      if (onNotify) onNotify("Images Compressed & Saved! ✅", false, "Compressed_Images.zip", "Image Batch", fileList[0].blob);
     };
 
     if (isPremium) {
@@ -113,9 +157,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
 
     if (navigator.onLine) {
       setStatus("Loading Ad...");
-      setTimeout(async () => {
-        await executeDownload();
-      }, 2000); 
+      setTimeout(async () => { await executeDownload(); }, 2000); 
     } else {
       alert("⚠️ Internet Required!\n\nFree users need internet to save images. Enable internet to watch a quick Ad, or Upgrade to Premium for offline saving.");
       setIsProcessing(false);
@@ -136,10 +178,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
               fileName: `min-${imgObj.file.name}`
           });
         }
-        
-        // Pass everything to gatekeeper
         checkInternetAndDownload(processedFiles);
-        
     } catch (err) {
         console.error("Compression Error", err);
         alert("Failed to compress images.");
@@ -148,7 +187,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
     }
   };
 
-  // --- STYLES (THE FIX) ---
+  // --- STYLES ---
   const containerStyle = {
     position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
     backgroundColor: '#09090b', color: 'white', zIndex: 100, display: 'flex', flexDirection: 'column'
@@ -163,14 +202,15 @@ const ImageResizer = ({ onBack, onNotify }) => {
     flex: 1, padding: '12px', textAlign: 'center', cursor: 'pointer',
     borderBottom: isActive ? '2px solid #3b82f6' : '2px solid transparent',
     color: isActive ? '#60a5fa' : '#71717a', fontWeight: 'bold', fontSize: '14px',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+    touchAction: 'manipulation'
   });
 
   const buttonStyle = (isActive) => ({
     flex: 1, padding: '12px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid',
     backgroundColor: isActive ? 'rgba(59, 130, 246, 0.1)' : '#27272a',
     borderColor: isActive ? '#3b82f6' : 'transparent',
-    color: isActive ? '#60a5fa' : '#71717a', cursor: 'pointer'
+    color: isActive ? '#60a5fa' : '#71717a', cursor: 'pointer', touchAction: 'manipulation'
   });
 
   return (
@@ -188,14 +228,14 @@ const ImageResizer = ({ onBack, onNotify }) => {
       {/* HEADER */}
       <div style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #27272a' }}>
         <div style={{display:'flex', alignItems:'center'}}>
-            <button onClick={onBack} style={{ padding: '8px', background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
+            <button onClick={onBack} style={{ padding: '8px', background: 'none', border: 'none', color: 'white', cursor: 'pointer', touchAction: 'manipulation' }}>
             <ArrowLeft size={24} />
             </button>
             <h2 style={{ marginLeft: '12px', fontSize: '18px', fontWeight: 'bold' }}>Compress Image</h2>
         </div>
 
         {/* PREMIUM TOGGLE BUTTON */}
-        <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#27272a', color: isPremium ? '#fff' : '#71717a', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}>
+        <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#27272a', color: isPremium ? '#fff' : '#71717a', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer', touchAction: 'manipulation'}}>
             <Icons.Crown/> {isPremium ? "Premium" : "Free"}
         </button>
       </div>
@@ -288,7 +328,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
               width: '100%', padding: '16px', backgroundColor: '#2563eb', color: 'white', 
               border: 'none', borderRadius: '16px', fontWeight: 'bold', fontSize: '16px',
               marginTop: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              cursor: 'pointer', opacity: isProcessing ? 0.7 : 1
+              cursor: 'pointer', opacity: isProcessing ? 0.7 : 1, touchAction: 'manipulation'
             }}
           >
             {isProcessing ? 'Compressing...' : <>Save Images <ChevronRight size={20}/></>}

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import { decryptPDF } from '@pdfsmaller/pdf-decrypt';
+import { Capacitor } from '@capacitor/core'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 // --- 100% NATIVE ICONS ---
 const Icons = {
@@ -10,7 +12,10 @@ const Icons = {
   Unlock: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
   View: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
   Download: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-  Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>
+  Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
+  // 🔴 NAYA: Password Show/Hide Icons
+  Eye: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+  EyeOff: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
 };
 
 const readFile = (file) => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsArrayBuffer(file); });
@@ -18,6 +23,7 @@ const readFile = (file) => new Promise(res => { const r = new FileReader(); r.on
 const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
   const [file, setFile] = useState(null);
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false); // 🔴 NAYA: State for Show/Hide Password
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [status, setStatus] = useState("");
@@ -68,32 +74,69 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
     setPassword("");
     setViewerDoc(null);
     setViewPagesCount(0);
-    if(onNotify) onNotify(null, true); // Haptic
+    if(onNotify) onNotify(null, true); 
     e.target.value = null;
   };
 
-  // --- AD GATEKEEPER (For Lock feature only) ---
-  const checkInternetAndDownload = (blob, fileName, fileType) => {
-    if (isPremium) {
-      downloadFileRaw(blob, fileName);
-      if (onNotify) onNotify(`${fileName} Saved! ✅`, false, fileName, fileType, blob);
-      return;
-    }
-    if (navigator.onLine) {
-      if (onNotify) onNotify(`Processing Ad... Saving ${fileName}`, false);
-      setTimeout(() => {
-          downloadFileRaw(blob, fileName);
-          if (onNotify) onNotify(`${fileName} Saved! ✅`, false, fileName, fileType, blob);
-      }, 1500); // Simulate Ad delay
-    } else {
-      alert("⚠️ Internet Required!\nFree users need internet to save files. Upgrade to Premium for offline use.");
-    }
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+         const base64Data = reader.result.split(',')[1];
+         resolve(base64Data);
+      };
+      reader.readAsDataURL(blob);
+    });
   };
 
-  const downloadFileRaw = (blob, fileName) => {
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = fileName;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  // 🔴 NAYA: Core Native Saving Logic (Fixed for proper storage access)
+  const handleNativeSave = async (blob, fileName, fileType) => {
+      try {
+          if (Capacitor.isNativePlatform()) {
+              setStatus("Saving to Phone...");
+              const base64Data = await blobToBase64(blob);
+              await Filesystem.writeFile({
+                  path: fileName,
+                  data: base64Data,
+                  directory: Directory.Documents 
+              });
+          } else {
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a'); 
+              link.href = url; 
+              link.download = fileName;
+              document.body.appendChild(link); 
+              link.click(); 
+              document.body.removeChild(link);
+          }
+          if (onNotify) onNotify(`Saved to Documents! ✅`, false, fileName, fileType, blob);
+      } catch (error) {
+          console.error("Save Error: ", error);
+          alert("⚠️ Storage Error!\nPlease ensure you have allowed storage permissions.");
+      }
+  };
+
+  const checkInternetAndDownload = async (blob, fileName, fileType) => {
+    if (isPremium) {
+      await handleNativeSave(blob, fileName, fileType);
+      setIsProcessing(false);
+      setStatus("");
+      return;
+    }
+
+    if (navigator.onLine) {
+      setStatus("Loading Ad...");
+      setTimeout(async () => {
+          await handleNativeSave(blob, fileName, fileType);
+          setIsProcessing(false);
+          setStatus("");
+      }, 2000); 
+    } else {
+      setIsProcessing(false);
+      setStatus("");
+      alert("⚠️ Internet Required!\nFree users need internet to save files. Upgrade to Premium for offline use.");
+    }
   };
 
   // --- 🔒 LOCK PDF LOGIC ---
@@ -109,13 +152,13 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
         const encryptedBytes = await encryptPDF(uint8Array, password);
         
         const blob = new Blob([encryptedBytes], { type: 'application/pdf' });
-        checkInternetAndDownload(blob, "Locked_" + file.name, "Locked PDF");
+        await checkInternetAndDownload(blob, `Locked_${file.name}`, "Locked PDF");
     } catch (error) {
         console.error(error);
         alert("Failed to lock. File might already be encrypted or corrupted.");
+        setIsProcessing(false);
+        setStatus("");
     }
-    setIsProcessing(false);
-    setStatus("");
   };
 
   // --- 🔓 UNLOCK: VIEW (FREE) LOGIC ---
@@ -130,12 +173,11 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
         const uint8Array = new Uint8Array(buffer);
         const decryptedBytes = await decryptPDF(uint8Array, password);
         
-        // Render it in Viewer
         const pdfjsDoc = await window.pdfjsLib.getDocument({ data: new Uint8Array(decryptedBytes) }).promise;
         setViewerDoc(pdfjsDoc);
         setViewPagesCount(pdfjsDoc.numPages);
         
-        if(onNotify) onNotify("PDF Unlocked Successfully! 🔓");
+        if(onNotify) onNotify("PDF Unlocked Successfully! 🔓", true);
     } catch (error) {
         console.error(error);
         alert("❌ Wrong Password or File is not encrypted!");
@@ -160,10 +202,9 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
         const decryptedBytes = await decryptPDF(uint8Array, password);
         
         const blob = new Blob([decryptedBytes], { type: 'application/pdf' });
-        const fileName = "Unlocked_" + file.name;
+        const fileName = `Unlocked_${file.name}`;
         
-        downloadFileRaw(blob, fileName);
-        if (onNotify) onNotify("Unlocked File Saved! ✅", false, fileName, "Unlocked PDF", blob);
+        await handleNativeSave(blob, fileName, "Unlocked PDF");
         
     } catch (error) {
         console.error(error);
@@ -189,12 +230,12 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
       {/* HEADER */}
       <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'30px'}}>
         <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-            <button onClick={onBack} style={{background:'var(--bg-card)', border:'1px solid var(--border-color)', borderRadius:'50%', width:'40px', height:'40px', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-main)', cursor:'pointer'}}><Icons.Back/></button>
+            <button onClick={onBack} style={{background:'var(--bg-card)', border:'1px solid var(--border-color)', borderRadius:'50%', width:'40px', height:'40px', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-main)', cursor:'pointer', touchAction: 'manipulation'}}><Icons.Back/></button>
             <h2 style={{margin:0, fontSize:'20px', fontWeight:'800', color:'var(--text-main)'}}>
                 {mode === 'lock' ? 'Lock PDF' : 'Unlock PDF'}
             </h2>
         </div>
-        <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 15px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}>
+        <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 15px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer', touchAction: 'manipulation'}}>
             <Icons.Crown/> {isPremium ? "Premium" : "Free"}
         </button>
       </div>
@@ -203,7 +244,7 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
       <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '24px', textAlign: 'center', border: '1px solid var(--border-color)', marginBottom: '20px' }}>
           
           {!file ? (
-             <label style={{ border: '2px dashed var(--border-color)', padding: '40px 20px', borderRadius: '15px', cursor: 'pointer', display: 'block', color: 'var(--text-muted)', background: 'var(--bg-input)' }} onClick={() => fileInputRef.current.click()}>
+             <label style={{ border: '2px dashed var(--border-color)', padding: '40px 20px', borderRadius: '15px', cursor: 'pointer', display: 'block', color: 'var(--text-muted)', background: 'var(--bg-input)', touchAction: 'manipulation' }} onClick={() => fileInputRef.current.click()}>
                 <div style={{display:'flex', justifyContent:'center', marginBottom:'15px'}}><Icons.Upload /></div>
                 <span style={{fontWeight:'600', fontSize:'16px', display:'block'}}>Tap to Select PDF</span>
              </label>
@@ -213,21 +254,29 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
                 {/* File Info */}
                 <div style={{background:'var(--bg-input)', padding:'15px', borderRadius:'12px', display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid var(--border-color)'}}>
                     <span style={{fontSize:'14px', fontWeight:'600', maxWidth:'70%', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', color:'var(--text-main)'}}>{file.name}</span>
-                    <button onClick={() => {setFile(null); setPassword(""); setViewerDoc(null);}} style={{color:'#ef4444', background:'none', border:'none', fontSize:'12px', fontWeight:'bold', cursor:'pointer'}}>✕ Remove</button>
+                    <button onClick={() => {setFile(null); setPassword(""); setViewerDoc(null);}} style={{color:'#ef4444', background:'none', border:'none', fontSize:'12px', fontWeight:'bold', cursor:'pointer', touchAction: 'manipulation'}}>✕ Remove</button>
                 </div>
 
-                {/* Password Input */}
+                {/* 🔴 NAYA: Password Input with Show/Hide Button */}
                 <div style={{textAlign: 'left', marginTop: '10px'}}>
                     <p style={{margin:'0 0 8px 0', fontSize:'13px', fontWeight:'bold', color: mode==='lock' ? '#2563eb' : '#ef4444'}}>
                         {mode === 'lock' ? '🔒 Set a strong password:' : '🔓 Enter PDF Password:'}
                     </p>
-                    <input 
-                        type="password" 
-                        value={password} 
-                        onChange={e => setPassword(e.target.value)} 
-                        placeholder={mode === 'lock' ? 'Enter new password...' : 'Enter existing password...'} 
-                        style={{width:'100%', padding:'15px', border:'2px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', borderRadius:'12px', fontSize:'16px'}}
-                    />
+                    <div style={{ position: 'relative' }}>
+                        <input 
+                            type={showPassword ? "text" : "password"} 
+                            value={password} 
+                            onChange={e => setPassword(e.target.value)} 
+                            placeholder={mode === 'lock' ? 'Enter new password...' : 'Enter existing password...'} 
+                            style={{width:'100%', padding:'15px', paddingRight: '50px', border:'2px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-main)', borderRadius:'12px', fontSize:'16px'}}
+                        />
+                        <button 
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5px' }}
+                        >
+                            {showPassword ? <Icons.EyeOff /> : <Icons.Eye />}
+                        </button>
+                    </div>
                 </div>
 
                 {/* ACTION BUTTONS BASED ON MODE */}
@@ -235,9 +284,9 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
                     <button 
                         onClick={runLock} 
                         disabled={isProcessing} 
-                        style={{background: '#2563eb', color:'white', padding:'16px', borderRadius:'16px', border:'none', marginTop:'10px', width:'100%', fontWeight:'bold', fontSize:'16px', boxShadow:'0 4px 15px rgba(37,99,235,0.4)', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}
+                        style={{background: '#2563eb', color:'white', padding:'16px', borderRadius:'16px', border:'none', marginTop:'10px', width:'100%', fontWeight:'bold', fontSize:'16px', boxShadow:'0 4px 15px rgba(37,99,235,0.4)', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', touchAction: 'manipulation'}}
                     >
-                       <Icons.Lock /> Lock & Save PDF
+                        <Icons.Lock /> Lock & Save PDF
                     </button>
                 ) : (
                     <div style={{display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '10px'}}>
@@ -245,17 +294,17 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
                         <button 
                             onClick={runUnlockView} 
                             disabled={isProcessing} 
-                            style={{background: '#10b981', color:'white', padding:'16px', borderRadius:'16px', border:'none', width:'100%', fontWeight:'bold', fontSize:'16px', boxShadow:'0 4px 15px rgba(16,185,129,0.4)', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}
+                            style={{background: '#10b981', color:'white', padding:'16px', borderRadius:'16px', border:'none', width:'100%', fontWeight:'bold', fontSize:'16px', boxShadow:'0 4px 15px rgba(16,185,129,0.4)', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', touchAction: 'manipulation'}}
                         >
-                           <Icons.View /> View PDF (Free)
+                            <Icons.View /> View PDF (Free)
                         </button>
                         
                         <button 
                             onClick={runUnlockDownload} 
                             disabled={isProcessing} 
-                            style={{background: 'transparent', color:'#f59e0b', padding:'14px', borderRadius:'16px', border:'2px solid #f59e0b', width:'100%', fontWeight:'bold', fontSize:'14px', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'}}
+                            style={{background: 'transparent', color:'#f59e0b', padding:'14px', borderRadius:'16px', border:'2px solid #f59e0b', width:'100%', fontWeight:'bold', fontSize:'14px', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', touchAction: 'manipulation'}}
                         >
-                           <Icons.Crown /> Download Without Password (Premium)
+                            <Icons.Crown /> Download Without Password (Premium)
                         </button>
 
                     </div>

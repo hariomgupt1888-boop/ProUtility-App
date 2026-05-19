@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Cropper from 'react-cropper';
 import 'cropperjs/dist/cropper.css';
+import { Capacitor } from '@capacitor/core'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 // --- 100% NATIVE SVG ICONS ---
 const Icons = {
@@ -14,11 +16,13 @@ const Icons = {
   Rotate: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>,
   FlipH: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20"/><path d="M8 5l-5 7 5 7"/><path d="M16 5l5 7-5 7"/></svg>,
   FlipV: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12h20"/><path d="M5 8l7-5 7 5"/><path d="M5 16l7 5 7-5"/></svg>,
-  Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M5 12H3"/><path d="M21 12h-2"/><path d="M6.34" y1="17.66" x2="4.93" y2="19.07"/><path d="M19.07" y1="4.93" x2="17.66" y2="6.34"/><path d="M6.34" y1="6.34" x2="4.93" y2="4.93"/><path d="M19.07" y1="19.07" x2="17.66" y2="17.66"/></svg>,
-  Transform: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9h18v6H3z"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>,
-  Crop: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>,
   Check: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>,
-  Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>
+  Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
+  // 🔴 NAYA: Aspect Ratio Icons
+  CropFree: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>,
+  CropSquare: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>,
+  CropLandscape: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2" ry="2"/></svg>,
+  CropPortrait: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="2" ry="2"/></svg>
 };
 
 const DEFAULT_SETTINGS = { brightness: 100, contrast: 100, saturation: 100, grayscale: 0, rotate: 0, flipX: 1, flipY: 1 };
@@ -29,6 +33,7 @@ const PhotoEditor = ({ onBack, onNotify }) => {
   const [activeTab, setActiveTab] = useState('adjust'); 
   const [activeFilter, setActiveFilter] = useState('brightness');
   const [isCropMode, setIsCropMode] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState(NaN); // 🔴 NAYA: Aspect Ratio State
 
   // --- PREMIUM & AD GATEKEEPER STATES ---
   const [isPremium, setIsPremium] = useState(false);
@@ -58,32 +63,64 @@ const PhotoEditor = ({ onBack, onNotify }) => {
     if (axis === 'y') updateSetting('flipY', settings.flipY === 1 ? -1 : 1);
   };
 
+  // 🔴 NAYA: Professional High-Res Crop
   const handleCropConfirm = () => {
     const cropper = cropperRef.current?.cropper;
     if (cropper) {
-      const croppedDataUrl = cropper.getCroppedCanvas().toDataURL('image/jpeg', 1.0);
+      const croppedDataUrl = cropper.getCroppedCanvas({
+          imageSmoothingEnabled: true,
+          imageSmoothingQuality: 'high',
+      }).toDataURL('image/jpeg', 1.0);
       setImage(croppedDataUrl); 
       setIsCropMode(false); 
-      if(onNotify) onNotify(null, true); 
+      if(onNotify) onNotify("Image Cropped Perfectly! ✂️", true); 
     }
   };
 
-  // --- 🔥 THE AD & PREMIUM GATEKEEPER LOGIC ---
-  const checkInternetAndDownload = (dataUrl, fileName, blob) => {
-    const executeDownload = () => {
-      const link = document.createElement('a');
-      link.download = fileName;
-      link.href = dataUrl;
-      link.click();
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+         const base64Data = reader.result.split(',')[1];
+         resolve(base64Data);
+      };
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleNativeSave = async (blob, fileName, fileType) => {
+      try {
+          if (Capacitor.isNativePlatform()) {
+              setStatus("Saving to Phone...");
+              const base64Data = await blobToBase64(blob);
+              await Filesystem.writeFile({
+                  path: fileName, // Simplified naming to avoid duplicate long strings
+                  data: base64Data,
+                  directory: Directory.Documents 
+              });
+          } else {
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a'); 
+              link.href = url; 
+              link.download = fileName;
+              document.body.appendChild(link); 
+              link.click(); 
+              document.body.removeChild(link);
+          }
+
+          if (onNotify) onNotify(`Photo Saved to Phone! ✅`, false, fileName, fileType, blob);
+      } catch (error) {
+          console.error("Save Error: ", error);
+          alert("⚠️ Storage Permission Required!\nPlease allow storage access to save the file.");
+      }
+  };
+
+  const checkInternetAndDownload = async (dataUrl, fileName, blob) => {
+    if (isPremium) {
+      await handleNativeSave(blob, fileName, "Edited Photo");
       setIsProcessing(false);
       setStatus("");
-      
-      // 🔴 NAYA: Passed blob to onNotify
-      if(onNotify) onNotify("Photo Saved! ✅", false, fileName, "Edited Photo", blob);
-    };
-
-    if (isPremium) {
-      executeDownload();
       return;
     }
 
@@ -91,17 +128,22 @@ const PhotoEditor = ({ onBack, onNotify }) => {
       setIsProcessing(true);
       setStatus("Loading Ad...");
       
-      setTimeout(() => {
-        executeDownload();
+      setTimeout(async () => {
+        await handleNativeSave(blob, fileName, "Edited Photo");
+        setIsProcessing(false);
+        setStatus("");
       }, 2000); 
     } else {
+      setIsProcessing(false);
+      setStatus("");
       alert("⚠️ Internet Required!\n\nFree users need internet to save images. Enable internet to watch a quick Ad, or Upgrade to Premium for offline saving.");
     }
   };
 
-  // --- CANVAS EXPORT ENGINE ---
   const handleSave = () => {
     if (!image || isProcessing) return;
+    setIsProcessing(true);
+    setStatus("Processing Image...");
     
     const img = new Image();
     img.onload = async () => {
@@ -118,16 +160,15 @@ const PhotoEditor = ({ onBack, onNotify }) => {
       
       const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
       
-      // 🔴 THE FIX: Convert DataURL to Blob
       try {
         const response = await fetch(dataUrl);
         const blob = await response.blob();
-        
-        // Pass blob to the gatekeeper
-        checkInternetAndDownload(dataUrl, 'ProUtility_Edited.jpg', blob);
+        checkInternetAndDownload(dataUrl, `ProUtility_Edited_${Date.now()}.jpg`, blob);
       } catch (err) {
         console.error("Failed to convert to blob", err);
         alert("Failed to save image.");
+        setIsProcessing(false);
+        setStatus("");
       }
     };
     img.src = image;
@@ -149,54 +190,50 @@ const PhotoEditor = ({ onBack, onNotify }) => {
     checkerboard: { position: 'absolute', inset: 0, opacity: 0.05, backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)', backgroundSize: '20px 20px' },
     controlsArea: { backgroundColor: '#1e293b', padding: '20px', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', display: 'flex', flexDirection: 'column', gap: '15px', borderTop: '1px solid #334155', paddingBottom: 'calc(15px + env(safe-area-inset-bottom))' },
     tabBar: { display: 'flex', background: '#0f172a', borderRadius: '12px', padding: '4px', marginBottom: '5px' },
-    tabBtn: (isActive) => ({ flex: 1, padding: '10px', background: isActive ? '#1e293b' : 'transparent', color: isActive ? 'white' : '#64748b', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer' }),
-    optBtn: (isActive) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '10px', minWidth: '65px', borderRadius: '12px', background: isActive ? '#3b82f6' : '#334155', color: isActive ? 'white' : '#94a3b8', border: 'none', cursor: 'pointer', transition: '0.2s' }),
+    tabBtn: (isActive) => ({ flex: 1, padding: '10px', background: isActive ? '#1e293b' : 'transparent', color: isActive ? 'white' : '#64748b', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', touchAction: 'manipulation' }),
+    optBtn: (isActive) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '10px', minWidth: '65px', borderRadius: '12px', background: isActive ? '#3b82f6' : '#334155', color: isActive ? 'white' : '#94a3b8', border: 'none', cursor: 'pointer', transition: '0.2s', touchAction: 'manipulation' }),
   };
 
   return (
     <div style={S.wrapper}>
       <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
 
-      {/* AD PROCESSING OVERLAY */}
       {isProcessing && (
         <div style={{position: 'absolute', inset: 0, backgroundColor: 'rgba(15,23,42,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000}}>
             <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
             <span style={{color: 'white', marginTop: '20px', fontWeight: 'bold', fontSize: '18px'}}>{status}</span>
-            <span style={{color: '#94a3b8', fontSize: '12px', marginTop: '8px'}}>Please wait...</span>
         </div>
       )}
 
       <input type="file" ref={fileInputRef} style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />
 
-      {/* HEADER */}
       <div style={S.header}>
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-            <button onClick={onBack} style={{background:'none', border:'none', color:'white'}}><Icons.Back/></button>
+            <button onClick={onBack} style={{background:'none', border:'none', color:'white', touchAction: 'manipulation', cursor: 'pointer'}}><Icons.Back/></button>
             <span style={{fontWeight:'bold', fontSize:'16px'}}>Editor Pro</span>
         </div>
         
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-            <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#e2e8f0', color: isPremium ? '#fff' : '#64748b', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}>
+            <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#e2e8f0', color: isPremium ? '#fff' : '#64748b', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer', touchAction: 'manipulation'}}>
                 <Icons.Crown/> {isPremium ? "Premium" : "Free"}
             </button>
 
             {image && !isCropMode ? (
-                <button onClick={handleSave} disabled={isProcessing} style={{background:'#3b82f6', color:'white', padding:'6px 16px', borderRadius:'20px', border:'none', fontWeight:'bold', display:'flex', gap:'5px', alignItems:'center', opacity: isProcessing ? 0.5 : 1}}>
+                <button onClick={handleSave} disabled={isProcessing} style={{background:'#3b82f6', color:'white', padding:'6px 16px', borderRadius:'20px', border:'none', fontWeight:'bold', display:'flex', gap:'5px', alignItems:'center', opacity: isProcessing ? 0.5 : 1, touchAction: 'manipulation'}}>
                     Save <Icons.Download />
                 </button>
             ) : isCropMode ? (
-                <button onClick={handleCropConfirm} style={{background:'#10b981', color:'white', padding:'6px 16px', borderRadius:'20px', border:'none', fontWeight:'bold', display:'flex', gap:'5px', alignItems:'center'}}>
+                <button onClick={handleCropConfirm} style={{background:'#10b981', color:'white', padding:'6px 16px', borderRadius:'20px', border:'none', fontWeight:'bold', display:'flex', gap:'5px', alignItems:'center', touchAction: 'manipulation'}}>
                     Done <Icons.Check />
                 </button>
             ) : null}
         </div>
       </div>
 
-      {/* WORKSPACE */}
       <div style={S.workArea}>
          <div style={S.checkerboard}></div>
          {!image ? (
-            <div onClick={() => fileInputRef.current.click()} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', zIndex: 5}}>
+            <div onClick={() => fileInputRef.current.click()} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', zIndex: 5, touchAction: 'manipulation'}}>
                <Icons.Upload /><p style={{color:'#f8fafc', fontWeight:'bold', marginTop:'15px'}}>Select Photo</p>
             </div>
          ) : (
@@ -206,11 +243,13 @@ const PhotoEditor = ({ onBack, onNotify }) => {
                         src={image}
                         style={{ height: '100%', width: '100%' }}
                         ref={cropperRef}
+                        aspectRatio={aspectRatio} // 🔴 NAYA: Aspect Ratio Apply
                         guides={true} 
                         viewMode={1} 
                         background={false} 
                         responsive={true}
-                        autoCropArea={0.8} 
+                        autoCropArea={0.9}
+                        checkOrientation={false} // 🔴 NAYA: Prevents EXIF rotation bugs
                     />
                 )}
                 <img src={image} style={getPreviewStyle()} alt="Preview" />
@@ -218,7 +257,6 @@ const PhotoEditor = ({ onBack, onNotify }) => {
          )}
       </div>
 
-      {/* CONTROLS */}
       {image && (
         <div style={S.controlsArea}>
             <div style={S.tabBar}>
@@ -250,15 +288,20 @@ const PhotoEditor = ({ onBack, onNotify }) => {
                 </div>
             )}
 
+            {/* 🔴 NAYA: Professional Aspect Ratio Controls for Crop */}
             {isCropMode && (
-                <div style={{color:'#94a3b8', fontSize:'13px', fontWeight:'bold', textAlign:'center', padding:'10px'}}>
-                    Adjust the box corners to crop. Tap 'Done' in header to confirm.
+                <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', justifyContent: 'center' }}>
+                    <button style={S.optBtn(isNaN(aspectRatio))} onClick={() => {setAspectRatio(NaN); if(onNotify) onNotify(null, true);}}> <Icons.CropFree /> <span style={{fontSize:'10px'}}>Free</span> </button>
+                    <button style={S.optBtn(aspectRatio === 1)} onClick={() => {setAspectRatio(1); if(onNotify) onNotify(null, true);}}> <Icons.CropSquare /> <span style={{fontSize:'10px'}}>1:1</span> </button>
+                    <button style={S.optBtn(aspectRatio === 4/3)} onClick={() => {setAspectRatio(4/3); if(onNotify) onNotify(null, true);}}> <Icons.CropLandscape /> <span style={{fontSize:'10px'}}>4:3</span> </button>
+                    <button style={S.optBtn(aspectRatio === 3/4)} onClick={() => {setAspectRatio(3/4); if(onNotify) onNotify(null, true);}}> <Icons.CropPortrait /> <span style={{fontSize:'10px'}}>3:4</span> </button>
+                    <button style={S.optBtn(aspectRatio === 16/9)} onClick={() => {setAspectRatio(16/9); if(onNotify) onNotify(null, true);}}> <Icons.CropLandscape /> <span style={{fontSize:'10px'}}>16:9</span> </button>
                 </div>
             )}
 
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #334155', paddingTop:'10px', marginTop:'5px'}}>
-                <button onClick={() => {setSettings(DEFAULT_SETTINGS); setIsCropMode(false);}} style={{background:'none', border:'none', color:'#ef4444', fontWeight:'bold', fontSize:'13px', cursor:'pointer'}}>Reset</button>
-                <button onClick={() => {setImage(null); fileInputRef.current.click();}} style={{background:'none', border:'none', color:'#3b82f6', fontWeight:'bold', fontSize:'13px', cursor:'pointer'}}>Change Photo</button>
+                <button onClick={() => {setSettings(DEFAULT_SETTINGS); setIsCropMode(false);}} style={{background:'none', border:'none', color:'#ef4444', fontWeight:'bold', fontSize:'13px', cursor:'pointer', touchAction: 'manipulation'}}>Reset</button>
+                <button onClick={() => {setImage(null); fileInputRef.current.click();}} style={{background:'none', border:'none', color:'#3b82f6', fontWeight:'bold', fontSize:'13px', cursor:'pointer', touchAction: 'manipulation'}}>Change Photo</button>
             </div>
         </div>
       )}

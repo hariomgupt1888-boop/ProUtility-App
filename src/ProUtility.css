@@ -569,3 +569,25 @@ body {
   font-size: 48px;
   margin-bottom: 16px;
 }
+/* src/ProUtility.css ke last me jodiye */
+
+@keyframes toastFadeInUp { 
+  0% { opacity: 0; transform: translate(-50%, 20px); } 
+  100% { opacity: 1; transform: translate(-50%, 0); } 
+}
+
+/* Mobile Touch Button Fix & Smoothness */
+* {
+  touch-action: manipulation;
+}
+
+.tool-card {
+  transition: transform 0.15s ease-out, filter 0.15s ease-out !important;
+  -webkit-tap-highlight-color: transparent !important; 
+  cursor: pointer;
+}
+
+.tool-card:active {
+  transform: scale(0.95) !important;
+  filter: brightness(0.9) !important;
+}

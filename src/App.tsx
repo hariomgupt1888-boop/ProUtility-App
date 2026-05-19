@@ -1,8 +1,12 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { AdMob } from '@capacitor-community/admob';
-import { Purchases } from '@revenuecat/purchases-capacitor';
+import { App as CapacitorApp } from '@capacitor/app';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { FileOpener } from '@capacitor-community/file-opener';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import QRCode from 'qrcode'; 
 import './ProUtility.css';
+
 import ImageResizer from './ImageResizer';
 import PhotoEditor from './PhotoEditor'; 
 import BgRemover from './BgRemover';
@@ -10,7 +14,7 @@ import DocScanner from "./DocScanner";
 import SmartPrinter from './SmartPrinter'; 
 import QrGenerator from './QrGenerator';   
 const PdfTools = lazy(() => import('./PdfTools'));
-const PdfSecurity = lazy(() => import('./PdfSecurity')); // 🔴 YEH NAYI LINE ADD KIJIYE
+const PdfSecurity = lazy(() => import('./PdfSecurity')); 
 
 // --- 💾 DATABASE HELPER (INDEXED-DB) ---
 const initDB = () => {
@@ -40,7 +44,6 @@ const getFilesFromDB = async () => {
     const tx = db.transaction('recentFiles', 'readonly');
     const store = tx.objectStore('recentFiles');
     const request = store.getAll();
-    // Sort descending by ID (newest first)
     request.onsuccess = () => resolve(request.result.sort((a,b) => b.id - a.id));
   });
 };
@@ -64,13 +67,10 @@ const PdfAdStrip = () => (
 
 // --- ICONS ---
 const Icons = {
-  // 🔴 PROFESSIONAL ICONS UPDATED HERE
   Remover: () => (<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>),
   Enhancer: () => (<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1" /><path d="M7 12h10"/></svg>),
   Resizer: () => (<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>),
   Editor: () => (<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/></svg>),
-  
-  // ORIGINAL ICONS RETAINED AS IT IS
   PDF: () => (<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>),
   Printer: () => (<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>),
   QR: () => (<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><path d="M3 14h4v4H3z"/><path d="M10 3v4"/><path d="M21 10h-4"/><path d="M3 10h18"/></svg>),
@@ -79,7 +79,7 @@ const Icons = {
   Crown: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>
 };
 
-// --- TOOLS ARRAY & CARD ---
+// --- TOOLS ARRAY ---
 const TOOLS = [
   { id: 'pdf', title: 'PDF Master', subtitle: 'Merge & Split & More', icon: <Icons.PDF />, color: 'blue', large: true },
   { id: 'remover', title: 'Background Remover', subtitle: 'Magic Erase', icon: <Icons.Remover />, color: 'purple' },
@@ -90,60 +90,105 @@ const TOOLS = [
   { id: 'qr', title: 'QR Generator', subtitle: 'Create Codes', icon: <Icons.QR />, color: 'indigo' } 
 ];
 
+// --- PROFESSIONAL GRADIENT PALETTE ---
+const getProfessionalGradient = (colorName) => {
+  const palettes = {
+    blue: 'linear-gradient(135deg, #2563eb, #1e3a8a)', 
+    purple: 'linear-gradient(135deg, #8b5cf6, #5b21b6)', 
+    pink: 'linear-gradient(135deg, #ec4899, #be185d)', 
+    orange: 'linear-gradient(135deg, #f59e0b, #b45309)', 
+    green: 'linear-gradient(135deg, #10b981, #047857)', 
+    teal: 'linear-gradient(135deg, #14b8a6, #0f766e)', 
+    indigo: 'linear-gradient(135deg, #6366f1, #3730a3)' 
+  };
+  return palettes[colorName] || palettes.blue;
+};
+
 const ToolCard = ({ tool, onClick }) => (
-  <div className={`tool-card ${tool.large ? 'large' : 'secondary'} ${tool.color}`} 
-       style={{ ...(tool.color === 'teal' && { background: '#10b981' }), ...(tool.color === 'indigo' && { background: '#6366f1' }) }} 
+  <div className={`tool-card ${tool.large ? 'large' : 'secondary'}`} 
+       style={{ 
+         background: getProfessionalGradient(tool.color),
+         color: '#ffffff',
+         border: '1px solid rgba(255,255,255,0.1)', 
+         boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+       }} 
        onClick={() => onClick(tool)}>
-    <div className="tool-icon-wrapper">{tool.icon}</div>
+    <div className="tool-icon-wrapper" style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}>{tool.icon}</div>
     <div className={tool.large ? "tool-info" : ""}>
-      <div className="tool-title">{tool.title}</div>
-      <div className="tool-subtitle">{tool.subtitle}</div>
+      <div className="tool-title" style={{ fontWeight: '700', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>{tool.title}</div>
+      <div className="tool-subtitle" style={{ opacity: 0.85 }}>{tool.subtitle}</div>
     </div>
   </div>
 );
 
 // --- MAIN APP COMPONENT ---
 const ProUtilityApp = () => {
-  useEffect(() => {
-  // AdMob Init
-  AdMob.initialize();
-  // RevenueCat Init
-  Purchases.configure({ apiKey: "goog_TEST_KEY_HERE" }); 
-}, []);
   const [selectedTool, setSelectedTool] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [activeModal, setActiveModal] = useState(null); 
-
-  // --- NEW: RECENT FILES STATE ---
   const [recentFiles, setRecentFiles] = useState([]);
+  const [toastMessage, setToastMessage] = useState(null);
 
-  // Load from DB on mount AND when modal opens
   const fetchRecentFiles = async () => {
     const files = await getFilesFromDB();
-    setRecentFiles(files.slice(0, 11)); // Keep only max 11
+    setRecentFiles(files.slice(0, 11)); 
   };
 
   useEffect(() => {
     fetchRecentFiles();
   }, [activeModal]);
 
-  // --- NEW: TOAST NOTIFICATION STATE ---
-  const [toastMessage, setToastMessage] = useState(null);
+  // 🔴 1. STARTUP PERMISSIONS & SPLASH SCREEN FIX
+  useEffect(() => {
+    const initApp = async () => {
+      if (Capacitor.isNativePlatform()) {
+        await SplashScreen.hide();
+        
+        // App khulte hi Storage Access mangna
+        try {
+          const status = await Filesystem.checkPermissions();
+          if (status.publicStorage !== 'granted') {
+             await Filesystem.requestPermissions();
+          }
+        } catch (e) {
+          console.log("Permission Error", e);
+        }
+      }
+    };
+    initApp();
+  }, []);
 
-  // --- NEW: HAPTIC, TOAST & MEMORY HELPER ---
+  // 🔴 2. SMART NATIVE BACK BUTTON FIX
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const handleBackButton = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      if (isSidebarOpen) {
+        setIsSidebarOpen(false); 
+      } else if (activeModal) {
+        setActiveModal(null); 
+      } else if (selectedTool) {
+        Haptics.impact({ style: ImpactStyle.Light });
+        setSelectedTool(null); 
+      } else {
+        CapacitorApp.exitApp(); 
+      }
+    });
+
+    return () => {
+      handleBackButton.remove();
+    };
+  }, [isSidebarOpen, activeModal, selectedTool]);
+
   const triggerHapticAndToast = async (msg, isSmallVibrate = false, savedFileName = null, savedFileType = null, fileBlob = null) => {
-    
-    // 1. Haptic Feedback
     if (navigator.vibrate) navigator.vibrate(isSmallVibrate ? 30 : 50); 
     
-    // 2. Toast Show
     if (msg) {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 3000);
     }
 
-    // 3. Save to IndexedDB (Agar file blob aaya hai)
     if (savedFileName && fileBlob) {
         const newFile = {
             id: Date.now(),
@@ -153,23 +198,49 @@ const ProUtilityApp = () => {
             blob: fileBlob 
         };
         await saveFileToDB(newFile);
-        // Silently update list so it's ready when user opens it
         fetchRecentFiles();
     }
   };
 
-  // --- NAYA: FILE KHOLNE KA LOGIC ---
-  const handleOpenFile = (fileRecord) => {
+  // 🔴 3. NATIVE RECENT FILE OPENER FIX
+  const handleOpenFile = async (fileRecord) => {
       if(!fileRecord.blob) {
           triggerHapticAndToast("Cannot open file. Data missing.");
           return;
       }
-      triggerHapticAndToast(null, true); // small haptic
-      const url = window.URL.createObjectURL(fileRecord.blob);
-      window.open(url, '_blank');
+      triggerHapticAndToast(null, true); 
+      
+      try {
+        if (Capacitor.isNativePlatform()) {
+          // Asli phone viewer mein kholne ke liye pehle cache mein likhna padta hai
+          const base64Data = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onerror = reject;
+              reader.onload = () => resolve(reader.result.split(',')[1]);
+              reader.readAsDataURL(fileRecord.blob);
+          });
+
+          const writeResult = await Filesystem.writeFile({
+            path: fileRecord.name,
+            data: base64Data,
+            directory: Directory.Cache
+          });
+
+          await FileOpener.open({
+            filePath: writeResult.uri,
+            contentType: fileRecord.type.includes('PDF') ? 'application/pdf' : 'image/jpeg'
+          });
+        } else {
+          // Browser Fallback
+          const url = window.URL.createObjectURL(fileRecord.blob);
+          window.open(url, '_blank');
+        }
+      } catch (err) {
+        console.error("Error opening file: ", err);
+        triggerHapticAndToast("Error opening file format.");
+      }
   };
 
-  // --- PERSISTENCE: LOCAL STORAGE THEME ---
   const [themeMode, setThemeMode] = useState(() => {
     return localStorage.getItem('proUtilityTheme') || 'light';
   });
@@ -194,7 +265,10 @@ const ProUtilityApp = () => {
       setSelectedTool(tool);
   };
   
-  const goBack = () => setSelectedTool(null);
+  const goBack = () => {
+      Haptics.impact({ style: ImpactStyle.Light });
+      setSelectedTool(null);
+  };
   const isDark = themeMode === 'dark';
 
   const handleRateUs = () => window.open('https://play.google.com/store/apps/', '_blank');
@@ -211,7 +285,6 @@ const ProUtilityApp = () => {
   return (
     <div className="app-container" style={{ minHeight: '100vh', width: '100%', backgroundColor: 'var(--bg-main)', transition: 'background-color 0.3s ease', position: 'relative' }}>
       
-      {/* --- TOAST UI COMPONENT --- */}
       {toastMessage && (
         <div style={{
           position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
@@ -224,9 +297,21 @@ const ProUtilityApp = () => {
         </div>
       )}
 
-      <style>{`@keyframes toastFadeInUp { 0% { opacity: 0; transform: translate(-50%, 20px); } 100% { opacity: 1; transform: translate(-50%, 0); } }`}</style>
+      {/* 🔴 Mobile Touch Card Smoothness CSS */}
+      <style>{`
+        @keyframes toastFadeInUp { 0% { opacity: 0; transform: translate(-50%, 20px); } 100% { opacity: 1; transform: translate(-50%, 0); } }
+        
+        .tool-card {
+           transition: transform 0.15s ease-out, filter 0.15s ease-out !important;
+           -webkit-tap-highlight-color: transparent !important; 
+           cursor: pointer;
+        }
+        .tool-card:active {
+           transform: scale(0.95) !important;
+           filter: brightness(0.9) !important;
+        }
+      `}</style>
 
-      {/* --- SIDEBAR OVERLAY --- */}
       {isSidebarOpen && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 99999, display: 'flex' }} onClick={() => setIsSidebarOpen(false)}>
           <div style={{ width: '280px', backgroundColor: 'var(--bg-card)', height: '100%', padding: '20px', display: 'flex', flexDirection: 'column', boxShadow: '5px 0 20px rgba(0,0,0,0.3)', transition: 'background-color 0.3s' }} onClick={(e) => e.stopPropagation()}>
@@ -260,14 +345,12 @@ const ProUtilityApp = () => {
         </div>
       )}
 
-      {/* --- POPUP MODALS --- */}
       {activeModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(3px)' }} onClick={() => setActiveModal(null)}>
           <div style={{ background: 'var(--bg-card)', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '400px', border: '1px solid var(--border-color)', color: 'var(--text-main)', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }} onClick={(e) => e.stopPropagation()}>
             
             <button onClick={() => setActiveModal(null)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'var(--bg-input)', border: 'none', borderRadius: '50%', width: '30px', height: '30px', color: 'var(--text-main)', cursor: 'pointer', display: 'flex', alignItems:'center', justifyContent:'center', fontWeight: 'bold' }}>✕</button>
 
-            {/* 🔴 NEW: TAP TO OPEN RECENT FILES MODAL */}
             {activeModal === 'recent' && (
               <>
                 <h2 style={{margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px'}}>📂 Recent Files <span style={{fontSize: '12px', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '10px'}}>{recentFiles.length}/11</span></h2>
@@ -322,7 +405,6 @@ const ProUtilityApp = () => {
         </div>
       )}
 
-      {/* --- MAIN UI --- */}
       {!selectedTool && (
         <div className="app-content" style={{ paddingBottom: '70px' }}>
           <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', marginBottom: '10px', minHeight: '65px' }}>
@@ -347,7 +429,6 @@ const ProUtilityApp = () => {
         <div style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: 'var(--bg-main)', zIndex: 50 }}>
           <Suspense fallback={<div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color: 'var(--text-main)'}}>Loading Tool...</div>}>
             
-            {/* 🔴 NEW: Add conditions for lock and unlock */}
             {selectedTool.id === 'lock' ? <PdfSecurity mode="lock" onBack={goBack} onNotify={triggerHapticAndToast} /> :
              selectedTool.id === 'unlock' ? <PdfSecurity mode="unlock" onBack={goBack} onNotify={triggerHapticAndToast} /> :
              
@@ -369,5 +450,5 @@ const ProUtilityApp = () => {
 };
 
 const sideBtn = { display: 'flex', alignItems: 'center', gap: '15px', padding: '12px 15px', background: 'none', border: 'none', fontSize: '16px', fontWeight: '600', textAlign: 'left', cursor: 'pointer', borderRadius: '10px' };
-
+// GitHub, please build a fresh APK now!
 export default ProUtilityApp;
