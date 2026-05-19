@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Printer } from '@bcyesil/capacitor-plugin-printer';
+import { Capacitor } from '@capacitor/core';
 
 // --- PREMIUM ICONS ---
 const Icons = {
@@ -15,7 +17,6 @@ const SmartPrinter = ({ onBack, onNotify }) => {
   
   const fileInputRef = useRef(null);
 
-  // 🔴 PDF.js ko background mein load karna taaki PDF render ho sake
   useEffect(() => {
     if (!window.pdfjsLib) {
       const script = document.createElement('script');
@@ -33,11 +34,20 @@ const SmartPrinter = ({ onBack, onNotify }) => {
         setFile(selectedFile); 
         setPreview(URL.createObjectURL(selectedFile)); 
         
-        if(onNotify) onNotify(null, true); // Haptic
+        if(onNotify) onNotify(null, true); 
     } 
   };
+
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+  };
   
-  // --- 🖨️ ADVANCED APP-READY PRINT LOGIC (PDF TO IMAGE ENGINE) ---
+  // --- 🖨️ ADVANCED APP-READY PRINT LOGIC (NATIVE FIX) ---
   const handlePrint = async () => { 
     if (!file || !preview) return alert("Please upload a file first!"); 
     
@@ -45,79 +55,71 @@ const SmartPrinter = ({ onBack, onNotify }) => {
     setIsPrinting(true);
 
     try {
-        // Hidden Iframe Create Karna
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.right = '0';
-        iframe.style.bottom = '0';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
-
         const isPdf = file.type.includes('pdf');
-
-        if (isPdf) {
-            // 🔴 PDF ENGINE: Convert PDF pages to HD Images for Mobile WebView Print
-            if(onNotify) onNotify("Rendering PDF Pages... 📄");
-            
-            const arrayBuffer = await file.arrayBuffer();
-            const pdfDoc = await window.pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-            
-            let htmlContent = '<html><body style="margin:0; padding:0;">';
-            
-            // Har page ko render karke image tag banana
-            for (let i = 1; i <= pdfDoc.numPages; i++) {
-                const page = await pdfDoc.getPage(i);
-                // Scale 2.0 HD print quality ke liye hai
-                const viewport = page.getViewport({ scale: 2.0 }); 
-                const canvas = document.createElement('canvas');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-                
-                // Image tag mein data daalna
-                htmlContent += `<img src="${canvas.toDataURL('image/jpeg', 0.9)}" style="width:100%; display:block; margin:0; padding:0; page-break-after:always;" />`;
+        
+        // 🔴 NAYA FIX: Sending Direct Native Content instead of complex HTML
+        if (Capacitor.isNativePlatform()) {
+            if (isPdf) {
+                // PDF ko directly print manager me bhejna (fastest via base64 data URI)
+                const base64Pdf = await fileToBase64(file);
+                await Printer.print({ 
+                    content: `data:application/pdf;base64,${base64Pdf}`,
+                    name: file.name
+                });
+            } else {
+                // Image ko HTML structure me pack karke print manager ko dena
+                const htmlContent = `
+                    <html>
+                        <head><style>@page { margin: 0; } body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }</style></head>
+                        <body><img src="${preview}" style="max-width: 100%; max-height: 100vh;" /></body>
+                    </html>
+                `;
+                await Printer.print({ 
+                    content: htmlContent,
+                    name: 'Image Print'
+                });
             }
-            htmlContent += '</body></html>';
+        } 
+        // --- WEB FALLBACK (Computer pe test karne ke liye) ---
+        else {
+            let htmlContent = '';
+            if (isPdf) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdfDoc = await window.pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+                
+                htmlContent = '<html><body style="margin:0; padding:0;">';
+                for (let i = 1; i <= pdfDoc.numPages; i++) {
+                    const page = await pdfDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 2.0 }); 
+                    const canvas = document.createElement('canvas');
+                    canvas.width = viewport.width; canvas.height = viewport.height;
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+                    htmlContent += `<img src="${canvas.toDataURL('image/jpeg', 0.9)}" style="width:100%; display:block; margin:0; padding:0; page-break-after:always;" />`;
+                }
+                htmlContent += '</body></html>';
+            } else {
+                htmlContent = `<html><body style="margin:0; display:flex; justify-content:center; align-items:center; height: 100vh;"><img src="${preview}" style="max-width:100%; max-height:100%; object-fit:contain;" /></body></html>`;
+            }
 
-            // Iframe mein content likhna
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed'; iframe.style.right = '0'; iframe.style.bottom = '0'; iframe.style.width = '0'; iframe.style.height = '0'; iframe.style.border = '0';
+            document.body.appendChild(iframe);
             iframe.contentWindow.document.open();
             iframe.contentWindow.document.write(htmlContent);
             iframe.contentWindow.document.close();
 
-            // Render hone ka thoda wait karna, fir print command dena
             setTimeout(() => {
                 iframe.contentWindow.focus();
                 iframe.contentWindow.print();
-                setIsPrinting(false);
                 setTimeout(() => document.body.removeChild(iframe), 2000);
             }, 1500);
-
-        } else {
-            // 🔴 IMAGE ENGINE: Direct Print for JPG/PNG
-            const htmlContent = `
-                <html>
-                    <body style="margin:0; display:flex; justify-content:center; align-items:center;">
-                        <img src="${preview}" style="max-width:100%; max-height:100%; object-fit:contain;" onload="window.print();" />
-                    </body>
-                </html>
-            `;
-            iframe.contentWindow.document.open();
-            iframe.contentWindow.document.write(htmlContent);
-            iframe.contentWindow.document.close();
-
-            // Cleanup after print dialog closes
-            setTimeout(() => {
-                setIsPrinting(false);
-                document.body.removeChild(iframe);
-            }, 2000);
         }
 
     } catch (error) {
         console.error("Printing failed:", error);
-        if(onNotify) onNotify("Error rendering document for print.");
-        alert("Failed to start printing. Please try again.");
+        if(onNotify) onNotify("❌ Error sending document to printer.");
+        alert("Failed to start printing. Make sure your printer is connected via OTG or Wi-Fi and its Service Plugin is installed on your phone.");
+    } finally {
         setIsPrinting(false);
     }
   };
@@ -139,11 +141,11 @@ const SmartPrinter = ({ onBack, onNotify }) => {
           <div style={{background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', borderRadius: '16px', padding: '15px', display: 'flex', gap: '12px', alignItems: 'flex-start'}}>
               <div style={{color: '#3b82f6', marginTop: '2px'}}><Icons.Info /></div>
               <div>
-                  <h4 style={{margin: '0 0 5px 0', color: '#2563eb', fontSize: '15px'}}>How to Print via USB</h4>
+                  <h4 style={{margin: '0 0 5px 0', color: '#2563eb', fontSize: '15px'}}>How to Print via USB/OTG</h4>
                   <ul style={{margin: 0, paddingLeft: '15px', color: 'var(--text-main)', fontSize: '13px', lineHeight: '1.6'}}>
-                      <li>Connect your printer to your phone using an <b>OTG Cable</b>.</li>
-                      <li>Go to Phone Settings and <b>Turn ON OTG Connection</b> (Mandatory).</li>
-                      <li>Ensure your printer's plugin (e.g. HP, Canon) is installed on your phone.</li>
+                      <li>Connect printer to phone using an <b>OTG Cable</b>.</li>
+                      <li>Turn ON <b>OTG Connection</b> in Phone Settings.</li>
+                      <li>Ensure your printer's Service Plugin (e.g. HP Print Service, Canon Print Service) is installed from Play Store.</li>
                   </ul>
               </div>
           </div>
@@ -184,7 +186,7 @@ const SmartPrinter = ({ onBack, onNotify }) => {
                 
                 {/* PRINT BUTTON */}
                 <button onClick={handlePrint} disabled={isPrinting} style={{width:'100%', padding:'16px', background: isPrinting ? '#94a3b8' : '#10b981', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isPrinting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', boxShadow: isPrinting ? 'none' : '0 4px 15px rgba(16, 185, 129, 0.4)', transition: '0.2s'}}>
-                    <Icons.Printer /> {isPrinting ? "Processing..." : "Print Now"}
+                    <Icons.Printer /> {isPrinting ? "Sending to Printer..." : "Print Now"}
                 </button>
                 
                 {/* CANCEL/RESELECT BUTTON */}
