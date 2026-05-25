@@ -52,7 +52,6 @@ const BgRemover = ({ onBack, onNotify }) => {
     const file = e.target.files[0];
     if (file) {
       const img = new Image();
-      // 🔴 NAYA FIX 1: Tainted Canvas Error rokne ke liye
       img.crossOrigin = "anonymous"; 
       
       img.onload = () => {
@@ -84,11 +83,10 @@ const BgRemover = ({ onBack, onNotify }) => {
     setProgressText('Downloading AI Model... (Once)');
     
     try {
-      // 🔴 NAYA FIX 2: CORS Bypass logic for WebView
+      // 🔴 AI FIX: Using JSDelivr CDN (More reliable for Capacitor/Android WebView)
       const config = {
-        publicPath: "https://unpkg.com/@imgly/background-removal@1.4.3/dist/", 
+        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.3/dist/", 
         model: 'small', 
-        fetchArgs: { mode: 'cors' }, // WebView ko block karne se rokne ke liye
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             setProgressText(`Loading AI... ${percent}%`);
@@ -105,8 +103,8 @@ const BgRemover = ({ onBack, onNotify }) => {
       setHistoryCount(0);
       
     } catch (e) {
-      console.error("AI Blocked by testing environment:", e);
-      alert("⚠️ Local Server Blocked AI: Shifting to Manual Mode!\n\n(Don't worry, the automatic AI will work perfectly when converted to a real app. For now, you can use the Manual Eraser to test!)");
+      console.error("AI Blocked by environment:", e);
+      alert("⚠️ AI Model Blocked!\n\nAndroid security blocked the AI download. Use the Manual Eraser tool for now.");
       
       setProcessedImage(image); 
       setEditMode('erase'); 
@@ -122,7 +120,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     if (processedImage && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
       const img = new Image();
-      img.crossOrigin = "anonymous"; // Ensure transparency saves
+      img.crossOrigin = "anonymous"; 
       img.onload = () => {
         canvasRef.current.width = img.width;
         canvasRef.current.height = img.height;
@@ -258,24 +256,44 @@ const BgRemover = ({ onBack, onNotify }) => {
     });
   };
 
-  // --- 🔴 NAYA FIX 3: 100% NATIVE GALLERY SAVE GATEKEEPER ---
+  // --- 🔴 SAVE FIX: Fallback to Documents if Gallery access is denied ---
   const checkInternetAndDownload = async (dataUrl, fileName, blob) => {
     const executeDownload = async () => {
       try {
         if (Capacitor.isNativePlatform()) {
-           setSaveStatus("Saving to Gallery...");
-           await Filesystem.requestPermissions();
+           setSaveStatus("Saving Image...");
+           
+           try {
+               await Filesystem.requestPermissions();
+           } catch (permErr) {
+               console.log("Permission request bypassed or unsupported.", permErr);
+           }
 
            const base64Data = await blobToBase64(blob);
-           const savedFile = await Filesystem.writeFile({
-             path: `ProUtility_Cutout_${Date.now()}.png`, // PNG ensures transparency is kept
-             data: base64Data,
-             directory: Directory.Cache 
-           });
-
-           await Media.savePhoto({ path: savedFile.uri });
+           
+           try {
+               // Pehli koshish: Seedha Cache/Gallery mein save karna
+               const savedFile = await Filesystem.writeFile({
+                 path: fileName, 
+                 data: base64Data,
+                 directory: Directory.Cache 
+               });
+               await Media.savePhoto({ path: savedFile.uri });
+               if(onNotify) onNotify("Saved to Gallery! ✅", false);
+           } catch (mediaErr) {
+               console.log("Gallery save failed, trying Documents fallback...", mediaErr);
+               
+               // DUSRI KOSHISH (Fallback): Agar Gallery permission na mile, toh app ke Documents mein daal do
+               await Filesystem.writeFile({
+                 path: fileName,
+                 data: base64Data,
+                 directory: Directory.Documents
+               });
+               alert("✅ Saved to Documents!\nSince Gallery permission was denied, we saved it safely in your phone's Documents folder.");
+           }
         } 
         else {
+           // Web/Browser Fallback
            const link = document.createElement('a');
            link.download = fileName;
            link.href = dataUrl;
@@ -284,11 +302,10 @@ const BgRemover = ({ onBack, onNotify }) => {
 
         setIsSaving(false);
         setSaveStatus("");
-        if(onNotify) onNotify("Cutout Saved to Gallery! ✅", false, fileName, "Image Cutout", blob);
 
       } catch (error) {
-        console.error("Save Error: ", error);
-        alert("⚠️ Permission Required!\nPlease allow access to save images to your Gallery.");
+        console.error("Critical Save Error: ", error);
+        alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
         setIsSaving(false);
         setSaveStatus("");
       }
@@ -304,7 +321,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       setSaveStatus("Loading Ad...");
       setTimeout(async () => { await executeDownload(); }, 2000); 
     } else {
-      alert("⚠️ Internet Required!\n\nFree users need internet to save images. Enable internet to watch a quick Ad, or Upgrade to Premium for offline saving.");
+      alert("⚠️ Internet Required for Free Users.");
       setIsSaving(false);
       setSaveStatus("");
     }
@@ -312,12 +329,12 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const handleSave = async () => {
     if (canvasRef.current && !isSaving) {
-        // Must be image/png to keep background transparent!
+        // PNG zaroori hai taaki background transparent rahe!
         const dataUrl = canvasRef.current.toDataURL('image/png');
         try {
             const response = await fetch(dataUrl);
             const blob = await response.blob();
-            await checkInternetAndDownload(dataUrl, `Cutout_${Date.now()}.png`, blob);
+            await checkInternetAndDownload(dataUrl, `ProUtility_Cutout_${Date.now()}.png`, blob);
         } catch (e) {
             console.error("Failed to convert to blob", e);
             alert("Failed to save image.");

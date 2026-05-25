@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
-import { Media } from '@capacitor-community/media'; // 🔴 NAYA: Direct Gallery Save Plugin
+import { Media } from '@capacitor-community/media'; 
 import { 
   ArrowLeft, Upload, Zap, FileBarChart, Sliders, 
   ChevronRight, ArrowRight 
@@ -43,7 +43,6 @@ const ImageResizer = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔴 NAYA: Superfast Mathematical Estimation (No Lag!)
   useEffect(() => {
     if (images.length === 0) return;
     
@@ -51,7 +50,6 @@ const ImageResizer = ({ onBack, onNotify }) => {
     let estimatedKB = originalKB;
 
     if (activeTab === 'quick') {
-       // Math formula for instant UI update instead of heavy canvas rendering
        estimatedKB = Math.floor(originalKB * (settings.quality * 1.2));
     } else if (activeTab === 'size') {
        estimatedKB = settings.targetKB;
@@ -61,12 +59,11 @@ const ImageResizer = ({ onBack, onNotify }) => {
 
     setPreviewInfo({
       original: originalKB,
-      compressed: Math.max(10, Math.min(estimatedKB, originalKB)) // Minimum 10KB, max original size
+      compressed: Math.max(10, Math.min(estimatedKB, originalKB)) 
     });
   }, [images, settings, activeTab]);
 
 
-  // 🔴 NAYA: Sirf "Save" dabane par asali compression hoga
   const compressSingleImage = async (url, originalFile) => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -84,7 +81,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
           const scale = Math.min(1, Math.sqrt(settings.targetKB * 1024 / originalFile.size));
           w = img.width * scale;
           h = img.height * scale;
-          q = 0.7; // Fixed quality for size target to ensure clarity
+          q = 0.7; 
         }
 
         canvas.width = w;
@@ -104,30 +101,55 @@ const ImageResizer = ({ onBack, onNotify }) => {
     });
   };
 
-  // --- 🔥 THE AD & PREMIUM GATEKEEPER LOGIC ---
+  // --- 🔴 THE FIX: Advanced Fallback Save Logic for Batch Images ---
   const checkInternetAndDownload = async (fileList) => {
     const executeDownload = async () => {
       try {
         if (Capacitor.isNativePlatform()) {
-           setStatus("Asking Permission...");
-           await Filesystem.requestPermissions();
-           setStatus("Saving to Gallery...");
+           setStatus("Saving Images...");
+           
+           try {
+               await Filesystem.requestPermissions();
+           } catch (permErr) {
+               console.log("Permission bypass: ", permErr);
+           }
+
+           let savedToDocs = false;
 
            for (const item of fileList) {
              const base64Data = await blobToBase64(item.blob);
+             const uniqueName = `ProUtility_Resized_${Date.now()}_${Math.floor(Math.random()*1000)}.jpg`;
              
-             // 🔴 NAYA: 100% Gallery Save Fix
-             // Pehle Cache mein likho, fir wahan se Media plugin ke jariye asli Gallery mein dalo
-             const savedFile = await Filesystem.writeFile({
-               path: `ProUtility_Resized_${Date.now()}.jpg`,
-               data: base64Data,
-               directory: Directory.Cache 
-             });
-
-             await Media.savePhoto({ path: savedFile.uri });
+             try {
+               // Koshish 1: Save to Gallery
+               const savedFile = await Filesystem.writeFile({
+                 path: uniqueName,
+                 data: base64Data,
+                 directory: Directory.Cache 
+               });
+               await Media.savePhoto({ path: savedFile.uri });
+             } catch (mediaErr) {
+               // Koshish 2: Fallback to Documents
+               console.log("Gallery save failed, falling back to Documents...", mediaErr);
+               await Filesystem.writeFile({
+                 path: uniqueName,
+                 data: base64Data,
+                 directory: Directory.Documents
+               });
+               savedToDocs = true;
+             }
            }
+           
+           // Notify user based on where it was saved
+           if (savedToDocs) {
+               alert("✅ Saved to Documents!\nSince Gallery permission was denied, we safely saved your images in your phone's Documents folder.");
+           } else {
+               if (onNotify) onNotify("Images Saved to Gallery! 🖼️", false);
+           }
+
         } 
         else {
+           // Web Fallback
            for (const item of fileList) {
                const link = document.createElement('a');
                link.href = URL.createObjectURL(item.blob);
@@ -139,12 +161,10 @@ const ImageResizer = ({ onBack, onNotify }) => {
 
         setIsProcessing(false);
         setStatus("");
-        
-        if (onNotify) onNotify("Images Saved to Gallery! 🖼️", false, "Compressed_Images.jpg", "Image Batch", fileList[0].blob);
 
       } catch (error) {
-        console.error("Save Error: ", error);
-        alert("⚠️ Permission Required!\nPlease allow access to save images to your Gallery.");
+        console.error("Critical Save Error: ", error);
+        alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
         setIsProcessing(false);
         setStatus("");
       }
@@ -178,7 +198,7 @@ const ImageResizer = ({ onBack, onNotify }) => {
               fileName: `min-${imgObj.file.name}`
           });
         }
-        checkInternetAndDownload(processedFiles);
+        await checkInternetAndDownload(processedFiles);
     } catch (err) {
         console.error("Compression Error", err);
         alert("Failed to compress images.");
@@ -217,7 +237,6 @@ const ImageResizer = ({ onBack, onNotify }) => {
     <div style={containerStyle}>
       <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       
-      {/* AD PROCESSING OVERLAY */}
       {isProcessing && (
         <div style={{position: 'absolute', inset: 0, backgroundColor: 'rgba(9,9,11,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10000}}>
             <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
@@ -225,7 +244,6 @@ const ImageResizer = ({ onBack, onNotify }) => {
         </div>
       )}
 
-      {/* HEADER */}
       <div style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #27272a' }}>
         <div style={{display:'flex', alignItems:'center'}}>
             <button onClick={onBack} style={{ padding: '8px', background: 'none', border: 'none', color: 'white', cursor: 'pointer', touchAction: 'manipulation' }}>
@@ -234,13 +252,11 @@ const ImageResizer = ({ onBack, onNotify }) => {
             <h2 style={{ marginLeft: '12px', fontSize: '18px', fontWeight: 'bold' }}>Compress Image</h2>
         </div>
 
-        {/* PREMIUM TOGGLE BUTTON */}
         <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#27272a', color: isPremium ? '#fff' : '#71717a', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer', touchAction: 'manipulation'}}>
             <Icons.Crown/> {isPremium ? "Premium" : "Free"}
         </button>
       </div>
 
-      {/* PREVIEW AREA */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px' }}>
         {images.length === 0 ? (
           <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '40px', cursor: 'pointer' }}>
@@ -256,7 +272,6 @@ const ImageResizer = ({ onBack, onNotify }) => {
             <div style={{ position: 'relative', borderRadius: '20px', overflow: 'hidden', border: '1px solid #27272a', backgroundColor: '#000' }}>
               <img src={images[0].url} style={{ width: '100%', height: '250px', objectFit: 'contain' }} />
               
-              {/* Size Badge */}
               <div style={{ position: 'absolute', bottom: '12px', right: '12px', backgroundColor: 'rgba(0,0,0,0.8)', padding: '6px 12px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
                 <span style={{ fontSize: '12px', color: '#a1a1aa', textDecoration: 'line-through' }}>{previewInfo.original} KB</span>
                 <ArrowRight size={12} color="#fff" />
@@ -267,18 +282,15 @@ const ImageResizer = ({ onBack, onNotify }) => {
         )}
       </div>
 
-      {/* CONTROLS (Bottom Sheet) */}
       {images.length > 0 && (
         <div style={bottomSheetStyle} className="animate-in slide-in-from-bottom duration-300">
           
-          {/* TABS */}
           <div style={{ display: 'flex', marginBottom: '24px' }}>
             <div onClick={() => { setActiveTab('quick'); if(onNotify) onNotify(null, true); }} style={tabStyle(activeTab === 'quick')}><Zap size={16}/> Quick</div>
             <div onClick={() => { setActiveTab('size'); if(onNotify) onNotify(null, true); }} style={tabStyle(activeTab === 'size')}><FileBarChart size={16}/> Size</div>
             <div onClick={() => { setActiveTab('manual'); if(onNotify) onNotify(null, true); }} style={tabStyle(activeTab === 'manual')}><Sliders size={16}/> Manual</div>
           </div>
 
-          {/* TAB CONTENT */}
           <div>
             {activeTab === 'quick' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -320,7 +332,6 @@ const ImageResizer = ({ onBack, onNotify }) => {
             )}
           </div>
 
-          {/* SAVE BUTTON */}
           <button 
             onClick={handleSave} 
             disabled={isProcessing}

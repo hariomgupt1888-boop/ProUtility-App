@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
-import Cropper from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
+import ReactCrop from 'react-image-crop'; // 🔴 NAYA STABLE CROPPER
+import 'react-image-crop/dist/ReactCrop.css'; 
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
@@ -16,10 +16,7 @@ const Icons = {
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
   Crop: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>,
   Check: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>,
-  // 🔴 NAYA: Professional Crop Toolbar Icons
-  RotateLeft: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>,
   RotateRight: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>,
-  Reset: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 3"/></svg>
 };
 
 const DocScanner = ({ onBack, onNotify }) => {
@@ -29,7 +26,8 @@ const DocScanner = ({ onBack, onNotify }) => {
   const [previewData, setPreviewData] = useState(null);
 
   const [isCropMode, setIsCropMode] = useState(false);
-  const cropperRef = useRef(null);
+  const [crop, setCrop] = useState(); // Naya Cropper State
+  const imgRef = useRef(null);
 
   const [isPremium, setIsPremium] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -102,30 +100,65 @@ const DocScanner = ({ onBack, onNotify }) => {
       if(onNotify) onNotify(null, true);
   };
 
-  // --- ✂️ PROFESSIONAL CROP LOGIC ---
+  // --- ✂️ FAST & STABLE CROP LOGIC (react-image-crop) ---
   const handleCropConfirm = () => {
-      const cropper = cropperRef.current?.cropper;
-      if (cropper) {
-          // 🔴 NAYA: Extract at 100% Original Resolution (No blurriness)
-          const croppedDataUrl = cropper.getCroppedCanvas({
-              imageSmoothingEnabled: true,
-              imageSmoothingQuality: 'high',
-              fillColor: '#fff' // Background fix for transparent areas on rotation
-          }).toDataURL('image/jpeg', 1.0);
-          
-          setPages(prev => prev.map((page, idx) => {
-              if (idx === activeIndex) return { ...page, src: croppedDataUrl };
-              return page;
-          }));
-          
+      if (!crop || !imgRef.current) {
           setIsCropMode(false);
-          if(onNotify) onNotify("Page Cropped! ✂️", true);
+          return;
       }
+
+      const canvas = document.createElement('canvas');
+      const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
+      const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
+      
+      canvas.width = crop.width * scaleX;
+      canvas.height = crop.height * scaleY;
+      const ctx = canvas.getContext('2d');
+
+      ctx.drawImage(
+        imgRef.current,
+        crop.x * scaleX,
+        crop.y * scaleY,
+        crop.width * scaleX,
+        crop.height * scaleY,
+        0,
+        0,
+        crop.width * scaleX,
+        crop.height * scaleY
+      );
+
+      const croppedDataUrl = canvas.toDataURL('image/jpeg', 1.0);
+      
+      setPages(prev => prev.map((page, idx) => {
+          if (idx === activeIndex) return { ...page, src: croppedDataUrl };
+          return page;
+      }));
+      
+      setIsCropMode(false);
+      setCrop(undefined); // Reset
+      if(onNotify) onNotify("Page Cropped! ✂️", true);
   };
 
-  // Crop Toolbar Functions
-  const rotateCrop = (degree) => cropperRef.current?.cropper.rotate(degree);
-  const resetCrop = () => cropperRef.current?.cropper.reset();
+  // Basic Image Rotation trick
+  const rotateImage = () => {
+    const img = new Image();
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.height;
+        canvas.height = img.width;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((90 * Math.PI) / 180);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        
+        const rotatedUrl = canvas.toDataURL('image/jpeg', 1.0);
+        setPages(prev => prev.map((page, idx) => {
+            if (idx === activeIndex) return { ...page, src: rotatedUrl };
+            return page;
+        }));
+    };
+    img.src = pages[activeIndex].src;
+  };
 
   // --- DRAG AND DROP ---
   const handleDragStart = (e, position) => { dragItem.current = position; };
@@ -202,9 +235,9 @@ const DocScanner = ({ onBack, onNotify }) => {
           try {
               if (Capacitor.isNativePlatform()) {
                   setStatus("Asking Permission...");
-                  await Filesystem.requestPermissions();
-                  setStatus("Saving to Phone...");
+                  try { await Filesystem.requestPermissions(); } catch(e) {}
                   
+                  setStatus("Saving to Phone...");
                   const base64Data = await blobToBase64(pdfBlob);
                   await Filesystem.writeFile({
                       path: finalPdfName,
@@ -346,33 +379,16 @@ const DocScanner = ({ onBack, onNotify }) => {
              <>
                  {isCropMode ? (
                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                         <div style={{ flex: 1, position: 'relative' }}>
-                             {/* 🔴 NAYA: Professional ViewMode 2 (Box stays inside image) */}
-                             <Cropper
-                                 src={pages[activeIndex].src}
-                                 style={{ height: '100%', width: '100%', position: 'absolute' }}
-                                 ref={cropperRef}
-                                 guides={true}
-                                 viewMode={2} 
-                                 dragMode="move"
-                                 background={false}
-                                 responsive={true}
-                                 autoCropArea={1}
-                                 zoomable={true}
-                                 checkOrientation={false}
-                                 toggleDragModeOnDblclick={false}
-                             />
+                         <div style={{ flex: 1, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+                             {/* 🔴 FASTEST & MOBILE FRIENDLY CROPPER */}
+                             <ReactCrop crop={crop} onChange={c => setCrop(c)} style={{ maxWidth: '100%', maxHeight: '100%' }}>
+                                <img ref={imgRef} src={pages[activeIndex].src} style={{ maxHeight: '70vh', maxWidth: '100vw', objectFit: 'contain' }} alt="Crop Me" />
+                             </ReactCrop>
                          </div>
-                         {/* 🔴 NAYA: Bottom Crop Toolbar */}
-                         <div style={{ height: '70px', background: '#0f172a', display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', borderTop: '1px solid #334155' }}>
-                            <button onClick={() => rotateCrop(-90)} style={{ background: '#1e293b', border: '1px solid #334155', color: 'white', padding: '10px 20px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                                <Icons.RotateLeft /> <span style={{fontSize: '10px'}}>Left</span>
-                            </button>
-                            <button onClick={resetCrop} style={{ background: '#1e293b', border: '1px solid #334155', color: '#f59e0b', padding: '10px 20px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                                <Icons.Reset /> <span style={{fontSize: '10px'}}>Reset</span>
-                            </button>
-                            <button onClick={() => rotateCrop(90)} style={{ background: '#1e293b', border: '1px solid #334155', color: 'white', padding: '10px 20px', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
-                                <Icons.RotateRight /> <span style={{fontSize: '10px'}}>Right</span>
+                         {/* ROTATE TOOLBAR */}
+                         <div style={{ height: '70px', background: '#0f172a', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid #334155', zIndex: 10 }}>
+                            <button onClick={rotateImage} style={{ background: '#1e293b', border: '1px solid #334155', color: 'white', padding: '10px 30px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                <Icons.RotateRight /> Rotate Image
                             </button>
                          </div>
                      </div>
