@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import Cropper from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
+import ReactCrop from 'react-image-crop'; // 🔴 NAYA STABLE CROPPER
+import 'react-image-crop/dist/ReactCrop.css';
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
@@ -18,7 +18,6 @@ const Icons = {
   FlipV: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12h20"/><path d="M5 8l7-5 7 5"/><path d="M5 16l7 5 7-5"/></svg>,
   Check: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>,
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
-  // 🔴 NAYA: Aspect Ratio Icons
   CropFree: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>,
   CropSquare: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>,
   CropLandscape: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2" ry="2"/></svg>,
@@ -33,15 +32,17 @@ const PhotoEditor = ({ onBack, onNotify }) => {
   const [activeTab, setActiveTab] = useState('adjust'); 
   const [activeFilter, setActiveFilter] = useState('brightness');
   const [isCropMode, setIsCropMode] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState(NaN); // 🔴 NAYA: Aspect Ratio State
+  const [aspectRatio, setAspectRatio] = useState(NaN); 
 
-  // --- PREMIUM & AD GATEKEEPER STATES ---
+  // 🔴 NAYA CROPPER STATES
+  const [crop, setCrop] = useState();
+  const imgRef = useRef(null);
+
   const [isPremium, setIsPremium] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState("");
 
   const fileInputRef = useRef(null);
-  const cropperRef = useRef(null);
 
   useEffect(() => { if (!image && fileInputRef.current) fileInputRef.current.click(); }, []);
 
@@ -51,7 +52,6 @@ const PhotoEditor = ({ onBack, onNotify }) => {
       const url = URL.createObjectURL(file);
       setImage(url); setSettings(DEFAULT_SETTINGS); setIsCropMode(false);
       e.target.value = null; 
-      
       if(onNotify) onNotify(null, true);
     }
   };
@@ -63,18 +63,38 @@ const PhotoEditor = ({ onBack, onNotify }) => {
     if (axis === 'y') updateSetting('flipY', settings.flipY === 1 ? -1 : 1);
   };
 
-  // 🔴 NAYA: Professional High-Res Crop
+  // 🔴 NAYA: Professional High-Res Crop Logic (react-image-crop)
   const handleCropConfirm = () => {
-    const cropper = cropperRef.current?.cropper;
-    if (cropper) {
-      const croppedDataUrl = cropper.getCroppedCanvas({
-          imageSmoothingEnabled: true,
-          imageSmoothingQuality: 'high',
-      }).toDataURL('image/jpeg', 1.0);
-      setImage(croppedDataUrl); 
-      setIsCropMode(false); 
-      if(onNotify) onNotify("Image Cropped Perfectly! ✂️", true); 
+    if (!crop || !imgRef.current || !crop.width || !crop.height) {
+      setIsCropMode(false);
+      return;
     }
+
+    const canvas = document.createElement('canvas');
+    const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
+    const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
+    
+    canvas.width = crop.width * scaleX;
+    canvas.height = crop.height * scaleY;
+    const ctx = canvas.getContext('2d');
+
+    ctx.drawImage(
+      imgRef.current,
+      crop.x * scaleX,
+      crop.y * scaleY,
+      crop.width * scaleX,
+      crop.height * scaleY,
+      0,
+      0,
+      crop.width * scaleX,
+      crop.height * scaleY
+    );
+
+    const croppedDataUrl = canvas.toDataURL('image/jpeg', 1.0);
+    setImage(croppedDataUrl); 
+    setIsCropMode(false);
+    setCrop(undefined); // Reset state
+    if(onNotify) onNotify("Image Cropped Perfectly! ✂️", true); 
   };
 
   const blobToBase64 = (blob) => {
@@ -95,7 +115,7 @@ const PhotoEditor = ({ onBack, onNotify }) => {
               setStatus("Saving to Phone...");
               const base64Data = await blobToBase64(blob);
               await Filesystem.writeFile({
-                  path: fileName, // Simplified naming to avoid duplicate long strings
+                  path: fileName, 
                   data: base64Data,
                   directory: Directory.Documents 
               });
@@ -177,10 +197,9 @@ const PhotoEditor = ({ onBack, onNotify }) => {
   const getPreviewStyle = () => ({
     filter: `brightness(${settings.brightness}%) contrast(${settings.contrast}%) saturate(${settings.saturation}%) grayscale(${settings.grayscale}%)`,
     transform: `rotate(${settings.rotate}deg) scale(${settings.flipX}, ${settings.flipY})`,
-    transition: isCropMode ? 'none' : 'transform 0.3s ease',
+    transition: 'transform 0.3s ease',
     maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
     borderRadius: '8px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-    display: isCropMode ? 'none' : 'block' 
   });
 
   const S = {
@@ -188,7 +207,7 @@ const PhotoEditor = ({ onBack, onNotify }) => {
     header: { height: '60px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #334155', zIndex: 10 },
     workArea: { flex: 1, position: 'relative', overflow: 'hidden', padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#020617' },
     checkerboard: { position: 'absolute', inset: 0, opacity: 0.05, backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)', backgroundSize: '20px 20px' },
-    controlsArea: { backgroundColor: '#1e293b', padding: '20px', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', display: 'flex', flexDirection: 'column', gap: '15px', borderTop: '1px solid #334155', paddingBottom: 'calc(15px + env(safe-area-inset-bottom))' },
+    controlsArea: { backgroundColor: '#1e293b', padding: '20px', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', display: 'flex', flexDirection: 'column', gap: '15px', borderTop: '1px solid #334155', paddingBottom: 'calc(15px + env(safe-area-inset-bottom))', zIndex: 10 },
     tabBar: { display: 'flex', background: '#0f172a', borderRadius: '12px', padding: '4px', marginBottom: '5px' },
     tabBtn: (isActive) => ({ flex: 1, padding: '10px', background: isActive ? '#1e293b' : 'transparent', color: isActive ? 'white' : '#64748b', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', cursor: 'pointer', touchAction: 'manipulation' }),
     optBtn: (isActive) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '10px', minWidth: '65px', borderRadius: '12px', background: isActive ? '#3b82f6' : '#334155', color: isActive ? 'white' : '#94a3b8', border: 'none', cursor: 'pointer', transition: '0.2s', touchAction: 'manipulation' }),
@@ -237,23 +256,20 @@ const PhotoEditor = ({ onBack, onNotify }) => {
                <Icons.Upload /><p style={{color:'#f8fafc', fontWeight:'bold', marginTop:'15px'}}>Select Photo</p>
             </div>
          ) : (
-            <>
-                {isCropMode && (
-                    <Cropper
-                        src={image}
-                        style={{ height: '100%', width: '100%' }}
-                        ref={cropperRef}
-                        aspectRatio={aspectRatio} // 🔴 NAYA: Aspect Ratio Apply
-                        guides={true} 
-                        viewMode={1} 
-                        background={false} 
-                        responsive={true}
-                        autoCropArea={0.9}
-                        checkOrientation={false} // 🔴 NAYA: Prevents EXIF rotation bugs
-                    />
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+                {isCropMode ? (
+                    <ReactCrop 
+                        crop={crop} 
+                        onChange={c => setCrop(c)} 
+                        aspect={isNaN(aspectRatio) ? undefined : aspectRatio} // Aspect Ratio handling
+                        style={{ maxWidth: '100%', maxHeight: '100%' }}
+                    >
+                        <img ref={imgRef} src={image} style={{ maxHeight: '70vh', maxWidth: '100vw', objectFit: 'contain' }} alt="Crop Base" />
+                    </ReactCrop>
+                ) : (
+                    <img src={image} style={getPreviewStyle()} alt="Preview" />
                 )}
-                <img src={image} style={getPreviewStyle()} alt="Preview" />
-            </>
+            </div>
          )}
       </div>
 
@@ -288,7 +304,7 @@ const PhotoEditor = ({ onBack, onNotify }) => {
                 </div>
             )}
 
-            {/* 🔴 NAYA: Professional Aspect Ratio Controls for Crop */}
+            {/* 🔴 ASPECT RATIO PRESETS */}
             {isCropMode && (
                 <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', justifyContent: 'center' }}>
                     <button style={S.optBtn(isNaN(aspectRatio))} onClick={() => {setAspectRatio(NaN); if(onNotify) onNotify(null, true);}}> <Icons.CropFree /> <span style={{fontSize:'10px'}}>Free</span> </button>
@@ -300,7 +316,7 @@ const PhotoEditor = ({ onBack, onNotify }) => {
             )}
 
             <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderTop:'1px solid #334155', paddingTop:'10px', marginTop:'5px'}}>
-                <button onClick={() => {setSettings(DEFAULT_SETTINGS); setIsCropMode(false);}} style={{background:'none', border:'none', color:'#ef4444', fontWeight:'bold', fontSize:'13px', cursor:'pointer', touchAction: 'manipulation'}}>Reset</button>
+                <button onClick={() => {setSettings(DEFAULT_SETTINGS); setIsCropMode(false);}} style={{background:'none', border:'none', color:'#ef4444', fontWeight:'bold', fontSize:'13px', cursor:'pointer', touchAction: 'manipulation'}}>Reset Filters</button>
                 <button onClick={() => {setImage(null); fileInputRef.current.click();}} style={{background:'none', border:'none', color:'#3b82f6', fontWeight:'bold', fontSize:'13px', cursor:'pointer', touchAction: 'manipulation'}}>Change Photo</button>
             </div>
         </div>

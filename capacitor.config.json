@@ -1,10 +1,14 @@
 {
   "appId": "com.proutility.app",
-  "appName": "Pro Utility",
+  "appName": "ProUtility",
   "webDir": "dist",
+  "bundledWebRuntime": false,
   "server": {
+    "androidScheme": "http",
     "cleartext": true,
-    "androidScheme": "http"
+    "allowNavigation": [
+      "*"
+    ]
   },
   "plugins": {
     "SplashScreen": {

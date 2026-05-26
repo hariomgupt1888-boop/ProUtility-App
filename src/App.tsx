@@ -145,14 +145,20 @@ const ProUtilityApp = () => {
       if (Capacitor.isNativePlatform()) {
         await SplashScreen.hide();
         
-        // App khulte hi Storage Access mangna
-        try {
-          const status = await Filesystem.checkPermissions();
-          if (status.publicStorage !== 'granted') {
-             await Filesystem.requestPermissions();
+        // 🔴 NAYA FIX: App khulte hi Storage + Camera Permission maangega (Kewal Pehli Baar)
+        const isFirstLaunch = localStorage.getItem('proUtilityFirstLaunch');
+        if (!isFirstLaunch) {
+          try {
+            // Storage Permission
+            await Filesystem.requestPermissions();
+            
+            // Camera Permission (Native WebView Fallback trick - No extra plugin needed)
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            stream.getTracks().forEach(track => track.stop()); // Stop immediately
+          } catch (e) {
+            console.log("Permission Error", e);
           }
-        } catch (e) {
-          console.log("Permission Error", e);
+          localStorage.setItem('proUtilityFirstLaunch', 'done');
         }
       }
     };
@@ -169,8 +175,7 @@ const ProUtilityApp = () => {
       } else if (activeModal) {
         setActiveModal(null); 
       } else if (selectedTool) {
-        Haptics.impact({ style: ImpactStyle.Light });
-        setSelectedTool(null); 
+        setSelectedTool(null); // 🔴 Haptics removed from back button
       } else {
         CapacitorApp.exitApp(); 
       }
@@ -181,9 +186,16 @@ const ProUtilityApp = () => {
     };
   }, [isSidebarOpen, activeModal, selectedTool]);
 
+  // 🔴 3. VIBRATION FIX: Now ONLY vibrates when saving a file!
   const triggerHapticAndToast = async (msg, isSmallVibrate = false, savedFileName = null, savedFileType = null, fileBlob = null) => {
-    if (navigator.vibrate) navigator.vibrate(isSmallVibrate ? 30 : 50); 
-    
+    // Sirf tab vibrate hoga jab Save wala payload (fileBlob) aayega ya msg mein 'Saved' hoga
+    if ((savedFileName && fileBlob) || (msg && msg.toLowerCase().includes('save'))) {
+        try {
+            if (navigator.vibrate) navigator.vibrate(50); 
+            await Haptics.impact({ style: ImpactStyle.Medium });
+        } catch (e) {}
+    }
+
     if (msg) {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 3000);
@@ -202,17 +214,15 @@ const ProUtilityApp = () => {
     }
   };
 
-  // 🔴 3. NATIVE RECENT FILE OPENER FIX
+  // 🔴 4. NATIVE RECENT FILE OPENER FIX
   const handleOpenFile = async (fileRecord) => {
       if(!fileRecord.blob) {
           triggerHapticAndToast("Cannot open file. Data missing.");
           return;
       }
-      triggerHapticAndToast(null, true); 
       
       try {
         if (Capacitor.isNativePlatform()) {
-          // Asli phone viewer mein kholne ke liye pehle cache mein likhna padta hai
           const base64Data = await new Promise((resolve, reject) => {
               const reader = new FileReader();
               reader.onerror = reject;
@@ -255,19 +265,17 @@ const ProUtilityApp = () => {
   const toggleTheme = () => {
       setThemeMode(prev => {
           const newMode = prev === 'dark' ? 'light' : 'dark';
-          triggerHapticAndToast(`${newMode === 'dark' ? '🌙 Dark' : '☀️ Light'} Mode Enabled`, false);
+          triggerHapticAndToast(`${newMode === 'dark' ? '🌙 Dark' : '☀️ Light'} Mode Enabled`);
           return newMode;
       });
   };
 
   const handleToolClick = (tool) => {
-      triggerHapticAndToast(null, true); 
-      setSelectedTool(tool);
+      setSelectedTool(tool); // 🔴 Haptics removed from general tool click
   };
   
   const goBack = () => {
-      Haptics.impact({ style: ImpactStyle.Light });
-      setSelectedTool(null);
+      setSelectedTool(null); // 🔴 Haptics removed from internal app back button
   };
   const isDark = themeMode === 'dark';
 
@@ -450,5 +458,5 @@ const ProUtilityApp = () => {
 };
 
 const sideBtn = { display: 'flex', alignItems: 'center', gap: '15px', padding: '12px 15px', background: 'none', border: 'none', fontSize: '16px', fontWeight: '600', textAlign: 'left', cursor: 'pointer', borderRadius: '10px' };
-// GitHub, please build a fresh APK now!
+
 export default ProUtilityApp;

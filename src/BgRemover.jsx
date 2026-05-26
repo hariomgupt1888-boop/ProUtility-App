@@ -14,12 +14,13 @@ const Icons = {
   Move: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="19 9 22 12 19 15"/><polyline points="9 19 12 22 15 19"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>,
   Undo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>,
-  Spinner: () => <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" className="spinner"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>
 };
 
 const BgRemover = ({ onBack, onNotify }) => {
   const [image, setImage] = useState(null);
+  const [imageBlob, setImageBlob] = useState(null); 
+  
   const [processedImage, setProcessedImage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressText, setProgressText] = useState('');
@@ -67,6 +68,10 @@ const BgRemover = ({ onBack, onNotify }) => {
         const url = canvas.toDataURL('image/jpeg', 0.8);
         setImage(url);
         
+        canvas.toBlob((blob) => {
+            setImageBlob(blob);
+        }, 'image/jpeg', 0.8);
+        
         originalImgRef.current = new Image();
         originalImgRef.current.crossOrigin = "anonymous";
         originalImgRef.current.src = url;
@@ -78,22 +83,22 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   const runAiRemoval = async () => {
-    if (!image) return;
+    if (!imageBlob) return; 
     setIsProcessing(true);
     setProgressText('Downloading AI Model... (Once)');
     
     try {
-      // 🔴 AI FIX: Using JSDelivr CDN (More reliable for Capacitor/Android WebView)
       const config = {
         publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.3/dist/", 
         model: 'small', 
+        device: 'cpu', // 🔴 NAYA FIX 1: WebView Graphics/WebGL Crash Rokne Ke Liye "CPU" set karna
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             setProgressText(`Loading AI... ${percent}%`);
         }
       };
       
-      const blob = await removeBackground(image, config);
+      const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
       setProcessedImage(url);
       setEditMode('move'); 
@@ -104,7 +109,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       
     } catch (e) {
       console.error("AI Blocked by environment:", e);
-      alert("⚠️ AI Model Blocked!\n\nAndroid security blocked the AI download. Use the Manual Eraser tool for now.");
+      alert("⚠️ AI Model Error!\n\nPlease check your internet connection, or your phone's security may be blocking the process. Use the Manual Eraser for now.");
       
       setProcessedImage(image); 
       setEditMode('erase'); 
@@ -131,7 +136,6 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   }, [processedImage]);
 
-  // --- UNDO / REDO ENGINE ---
   const saveHistoryState = () => {
     if (canvasRef.current) {
         redoRef.current = [];
@@ -256,34 +260,27 @@ const BgRemover = ({ onBack, onNotify }) => {
     });
   };
 
-  // --- 🔴 SAVE FIX: Fallback to Documents if Gallery access is denied ---
   const checkInternetAndDownload = async (dataUrl, fileName, blob) => {
     const executeDownload = async () => {
       try {
         if (Capacitor.isNativePlatform()) {
            setSaveStatus("Saving Image...");
            
-           try {
-               await Filesystem.requestPermissions();
-           } catch (permErr) {
-               console.log("Permission request bypassed or unsupported.", permErr);
-           }
+           // 🔴 NAYA FIX 2: Sirf Filesystem nahi, balki specific "Media (Gallery)" Permissions mangna
+           try { await Media.requestPermissions(); } catch (e) { console.log(e); }
+           try { await Filesystem.requestPermissions(); } catch (e) { console.log(e); }
 
            const base64Data = await blobToBase64(blob);
-           
            try {
-               // Pehli koshish: Seedha Cache/Gallery mein save karna
                const savedFile = await Filesystem.writeFile({
-                 path: fileName, 
+                 path: fileName,
                  data: base64Data,
                  directory: Directory.Cache 
                });
-               await Media.savePhoto({ path: savedFile.uri });
+               await Media.savePhoto({ path: savedFile.uri }); // Gallery save
                if(onNotify) onNotify("Saved to Gallery! ✅", false);
            } catch (mediaErr) {
                console.log("Gallery save failed, trying Documents fallback...", mediaErr);
-               
-               // DUSRI KOSHISH (Fallback): Agar Gallery permission na mile, toh app ke Documents mein daal do
                await Filesystem.writeFile({
                  path: fileName,
                  data: base64Data,
@@ -293,18 +290,15 @@ const BgRemover = ({ onBack, onNotify }) => {
            }
         } 
         else {
-           // Web/Browser Fallback
            const link = document.createElement('a');
            link.download = fileName;
            link.href = dataUrl;
            link.click();
         }
-
         setIsSaving(false);
         setSaveStatus("");
 
       } catch (error) {
-        console.error("Critical Save Error: ", error);
         alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
         setIsSaving(false);
         setSaveStatus("");
@@ -329,14 +323,12 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const handleSave = async () => {
     if (canvasRef.current && !isSaving) {
-        // PNG zaroori hai taaki background transparent rahe!
         const dataUrl = canvasRef.current.toDataURL('image/png');
         try {
             const response = await fetch(dataUrl);
             const blob = await response.blob();
             await checkInternetAndDownload(dataUrl, `ProUtility_Cutout_${Date.now()}.png`, blob);
         } catch (e) {
-            console.error("Failed to convert to blob", e);
             alert("Failed to save image.");
         }
     }
@@ -367,7 +359,7 @@ const BgRemover = ({ onBack, onNotify }) => {
          <div style={{position:'absolute', zIndex:50, inset:0, background:'rgba(15,23,42,0.9)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
              <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
              <span style={{marginTop:'20px', fontWeight:'bold', fontSize:'16px', color:'#f8fafc'}}>{isSaving ? saveStatus : progressText}</span>
-             <span style={{fontSize:'12px', color:'#94a3b8', marginTop:'8px'}}>{isSaving ? 'Please wait...' : 'AI is removing background...'}</span>
+             <span style={{fontSize:'12px', color:'#94a3b8', marginTop:'8px'}}>{isSaving ? 'Please wait...' : (isSaving ? '' : 'AI is removing background...')}</span>
          </div>
       )}
 
