@@ -145,27 +145,21 @@ const ProUtilityApp = () => {
       if (Capacitor.isNativePlatform()) {
         await SplashScreen.hide();
         
-        // 🔴 NAYA FIX: App khulte hi Storage + Camera Permission maangega (Kewal Pehli Baar)
-        const isFirstLaunch = localStorage.getItem('proUtilityFirstLaunch');
-        if (!isFirstLaunch) {
-          try {
-            // Storage Permission
-            await Filesystem.requestPermissions();
-            
-            // Camera Permission (Native WebView Fallback trick - No extra plugin needed)
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            stream.getTracks().forEach(track => track.stop()); // Stop immediately
-          } catch (e) {
-            console.log("Permission Error", e);
+        // App khulte hi sirf pehli baar Storage Access mangna
+        try {
+          const status = await Filesystem.checkPermissions();
+          if (status.publicStorage !== 'granted') {
+             await Filesystem.requestPermissions();
           }
-          localStorage.setItem('proUtilityFirstLaunch', 'done');
+        } catch (e) {
+          console.log("Permission Error", e);
         }
       }
     };
     initApp();
   }, []);
 
-  // 🔴 2. SMART NATIVE BACK BUTTON FIX
+  // 🔴 2. SMART NATIVE BACK BUTTON FIX (NO VIBRATION)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
@@ -175,7 +169,8 @@ const ProUtilityApp = () => {
       } else if (activeModal) {
         setActiveModal(null); 
       } else if (selectedTool) {
-        setSelectedTool(null); // 🔴 Haptics removed from back button
+        // Faltu vibration hata diya
+        setSelectedTool(null); 
       } else {
         CapacitorApp.exitApp(); 
       }
@@ -186,16 +181,16 @@ const ProUtilityApp = () => {
     };
   }, [isSidebarOpen, activeModal, selectedTool]);
 
-  // 🔴 3. VIBRATION FIX: Now ONLY vibrates when saving a file!
+  // 🔴 3. ONLY SAVE VIBRATION
   const triggerHapticAndToast = async (msg, isSmallVibrate = false, savedFileName = null, savedFileType = null, fileBlob = null) => {
-    // Sirf tab vibrate hoga jab Save wala payload (fileBlob) aayega ya msg mein 'Saved' hoga
-    if ((savedFileName && fileBlob) || (msg && msg.toLowerCase().includes('save'))) {
+    // Sirf tab vibrate hoga jab Save wala kaam ho (savedFileName ho ya message me save likha ho)
+    if (savedFileName || (msg && msg.toLowerCase().includes('save'))) {
         try {
-            if (navigator.vibrate) navigator.vibrate(50); 
+            if (navigator.vibrate) navigator.vibrate(50);
             await Haptics.impact({ style: ImpactStyle.Medium });
         } catch (e) {}
     }
-
+    
     if (msg) {
         setToastMessage(msg);
         setTimeout(() => setToastMessage(null), 3000);
@@ -223,6 +218,7 @@ const ProUtilityApp = () => {
       
       try {
         if (Capacitor.isNativePlatform()) {
+          // Asli phone viewer mein kholne ke liye pehle cache mein likhna padta hai
           const base64Data = await new Promise((resolve, reject) => {
               const reader = new FileReader();
               reader.onerror = reject;
@@ -270,13 +266,15 @@ const ProUtilityApp = () => {
       });
   };
 
+  // 🔴 5. NO VIBRATION ON NORMAL CLICKS
   const handleToolClick = (tool) => {
-      setSelectedTool(tool); // 🔴 Haptics removed from general tool click
+      setSelectedTool(tool);
   };
   
   const goBack = () => {
-      setSelectedTool(null); // 🔴 Haptics removed from internal app back button
+      setSelectedTool(null);
   };
+  
   const isDark = themeMode === 'dark';
 
   const handleRateUs = () => window.open('https://play.google.com/store/apps/', '_blank');
