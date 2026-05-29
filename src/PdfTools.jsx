@@ -1,3 +1,4 @@
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import React, { useState, useEffect } from 'react';
 import { Icons } from './components/Icons'; 
 import MergePdf from './components/PdfTools/MergePdf';

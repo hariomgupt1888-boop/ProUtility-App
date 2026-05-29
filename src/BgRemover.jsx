@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal";
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
-import { Media } from '@capacitor-community/media'; 
 
 // --- 100% Native SVG Icons ---
 const Icons = {
@@ -23,7 +22,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   
   const [processedImage, setProcessedImage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progressText, setProgressText] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0); // 🔴 NAYA PROGRESS STATE
   
   const [isPremium, setIsPremium] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
@@ -85,16 +84,17 @@ const BgRemover = ({ onBack, onNotify }) => {
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
-    setProgressText('Downloading AI Model... (Once)');
+    setDownloadProgress(0); // Shuru mein 0%
     
     try {
       const config = {
         publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.3/dist/", 
         model: 'small', 
-        device: 'cpu', // 🔴 NAYA FIX 1: WebView Graphics/WebGL Crash Rokne Ke Liye "CPU" set karna
+        device: 'cpu', 
         progress: (key, current, total) => {
+            // 🔴 NAYA BEAUTIFUL PROGRESS LOGIC
             const percent = Math.round((current / total) * 100);
-            setProgressText(`Loading AI... ${percent}%`);
+            setDownloadProgress(percent);
         }
       };
       
@@ -108,8 +108,9 @@ const BgRemover = ({ onBack, onNotify }) => {
       setHistoryCount(0);
       
     } catch (e) {
-      console.error("AI Blocked by environment:", e);
-      alert("⚠️ AI Model Error!\n\nPlease check your internet connection, or your phone's security may be blocking the process. Use the Manual Eraser for now.");
+      console.error("AI Error:", e);
+      // Puraane error popup ki jagah notification aur seedha manual mode
+      if (onNotify) onNotify("⚠️ AI couldn't detect subject. Switched to Manual Mode.");
       
       setProcessedImage(image); 
       setEditMode('erase'); 
@@ -264,32 +265,21 @@ const BgRemover = ({ onBack, onNotify }) => {
     const executeDownload = async () => {
       try {
         if (Capacitor.isNativePlatform()) {
-           setSaveStatus("Saving Image...");
-           
-           // 🔴 NAYA FIX 2: Sirf Filesystem nahi, balki specific "Media (Gallery)" Permissions mangna
-           try { await Media.requestPermissions(); } catch (e) { console.log(e); }
-           try { await Filesystem.requestPermissions(); } catch (e) { console.log(e); }
+           setIsSaving(true);
+           setSaveStatus("Saving to Phone...");
+           try { await Filesystem.requestPermissions(); } catch (e) { }
 
            const base64Data = await blobToBase64(blob);
-           try {
-               const savedFile = await Filesystem.writeFile({
-                 path: fileName,
-                 data: base64Data,
-                 directory: Directory.Cache 
-               });
-               await Media.savePhoto({ path: savedFile.uri }); // Gallery save
-               if(onNotify) onNotify("Saved to Gallery! ✅", false);
-           } catch (mediaErr) {
-               console.log("Gallery save failed, trying Documents fallback...", mediaErr);
-               await Filesystem.writeFile({
-                 path: fileName,
-                 data: base64Data,
-                 directory: Directory.Documents
-               });
-               alert("✅ Saved to Documents!\nSince Gallery permission was denied, we saved it safely in your phone's Documents folder.");
-           }
-        } 
-        else {
+           
+           await Filesystem.writeFile({
+             path: fileName,
+             data: base64Data,
+             directory: Directory.Documents,
+             recursive: true
+           });
+           
+           if(onNotify) onNotify("✅ Saved successfully to Documents folder!", false);
+        } else {
            const link = document.createElement('a');
            link.download = fileName;
            link.href = dataUrl;
@@ -299,6 +289,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         setSaveStatus("");
 
       } catch (error) {
+        console.error("Save Error:", error);
         alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
         setIsSaving(false);
         setSaveStatus("");
@@ -329,7 +320,7 @@ const BgRemover = ({ onBack, onNotify }) => {
             const blob = await response.blob();
             await checkInternetAndDownload(dataUrl, `ProUtility_Cutout_${Date.now()}.png`, blob);
         } catch (e) {
-            alert("Failed to save image.");
+            alert("Failed to process image.");
         }
     }
   };
@@ -355,11 +346,35 @@ const BgRemover = ({ onBack, onNotify }) => {
     <div style={S.wrapper}>
       <style>{`.spinner { animation: spin 1s linear infinite; } @keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       
+      {/* 🔴 NAYA BEAUTIFUL PROGRESS UI */}
       {(isProcessing || isSaving) && (
-         <div style={{position:'absolute', zIndex:50, inset:0, background:'rgba(15,23,42,0.9)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
-             <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
-             <span style={{marginTop:'20px', fontWeight:'bold', fontSize:'16px', color:'#f8fafc'}}>{isSaving ? saveStatus : progressText}</span>
-             <span style={{fontSize:'12px', color:'#94a3b8', marginTop:'8px'}}>{isSaving ? 'Please wait...' : (isSaving ? '' : 'AI is removing background...')}</span>
+         <div style={{position:'absolute', zIndex:50, inset:0, background:'rgba(15,23,42,0.95)', backdropFilter:'blur(8px)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: '20px', textAlign: 'center'}}>
+             
+             {isProcessing ? (
+               <>
+                 <h2 style={{color: '#f8fafc', marginBottom: '30px', fontSize: '22px'}}>AI Magic in Progress</h2>
+                 {/* Premium Progress Bar */}
+                 <div style={{width: '100%', maxWidth: '280px', background: '#334155', borderRadius: '20px', height: '14px', overflow: 'hidden', boxShadow: '0 0 20px rgba(59, 130, 246, 0.2)'}}>
+                     <div style={{width: `${downloadProgress}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #ec4899)', transition: 'width 0.3s ease', borderRadius: '20px'}}></div>
+                 </div>
+                 
+                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '280px', marginTop: '10px'}}>
+                    <span style={{fontSize:'14px', color:'#94a3b8', fontWeight: 'bold'}}>{downloadProgress < 100 ? 'Downloading Model...' : 'Applying AI...'}</span>
+                    <span style={{fontSize:'14px', color:'#3b82f6', fontWeight: 'bold'}}>{downloadProgress}%</span>
+                 </div>
+
+                 {downloadProgress < 100 && (
+                   <p style={{fontSize:'12px', color:'#64748b', marginTop:'20px', maxWidth: '250px'}}>
+                     Downloading AI components (once). Please ensure your internet is active.
+                   </p>
+                 )}
+               </>
+             ) : (
+               <>
+                 <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
+                 <span style={{marginTop:'20px', fontWeight:'bold', fontSize:'18px', color:'#f8fafc'}}>{saveStatus}</span>
+               </>
+             )}
          </div>
       )}
 

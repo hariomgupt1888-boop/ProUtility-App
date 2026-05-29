@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import jsPDF from 'jspdf';
 import { Icons } from '../Icons'; 
-import { checkInternetAndDownload } from '../../utils/pdfUtils';
+import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save Import
 
 const TextToPdf = ({ onNotify, isPremium }) => {
   const [textInput, setTextInput] = useState('');
@@ -18,10 +18,30 @@ const TextToPdf = ({ onNotify, isPremium }) => {
       const doc = new jsPDF();
       // Auto-wrap text at 180 width to fit page
       doc.text(doc.splitTextToSize(textInput, 180), 10, 10);
-      const blob = doc.output('blob');
-      await checkInternetAndDownload(blob, `${outputName}.pdf`, 'Text to PDF', isPremium, setStatus, setIsProcessing, onNotify);
-    } catch { 
-      alert('Failed to create PDF.'); 
+      
+      // 1. Android ko direct permission ke liye bolna
+      try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+
+      // 2. jsPDF se direct Base64 Data nikalna
+      const base64Data = doc.output('datauristring').split(',')[1];
+
+      // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE 
+      await Filesystem.writeFile({
+        path: `${outputName}.pdf`,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
+
+      // 4. Success Message aur Clear UI
+      if (onNotify) onNotify(`✅ ${outputName}.pdf Saved to Documents!`);
+      setStatus('');
+      setIsProcessing(false);
+      setTextInput(''); // Professional feel: Save hone ke baad box khali karna
+
+    } catch (error) { 
+      console.error("Save Error:", error);
+      alert('⚠️ Failed to save. Phone settings mein jao aur Storage/Files permission allow karo.'); 
       setIsProcessing(false); setStatus(''); 
     }
   };

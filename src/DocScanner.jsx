@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
-import ReactCrop from 'react-image-crop'; // 🔴 NAYA STABLE CROPPER
+import ReactCrop from 'react-image-crop'; 
 import 'react-image-crop/dist/ReactCrop.css'; 
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
@@ -26,7 +26,7 @@ const DocScanner = ({ onBack, onNotify }) => {
   const [previewData, setPreviewData] = useState(null);
 
   const [isCropMode, setIsCropMode] = useState(false);
-  const [crop, setCrop] = useState(); // Naya Cropper State
+  const [crop, setCrop] = useState(); 
   const imgRef = useRef(null);
 
   const [isPremium, setIsPremium] = useState(false);
@@ -100,7 +100,7 @@ const DocScanner = ({ onBack, onNotify }) => {
       if(onNotify) onNotify(null, true);
   };
 
-  // --- ✂️ FAST & STABLE CROP LOGIC (react-image-crop) ---
+  // --- ✂️ FAST & STABLE CROP LOGIC ---
   const handleCropConfirm = () => {
       if (!crop || !imgRef.current) {
           setIsCropMode(false);
@@ -135,11 +135,10 @@ const DocScanner = ({ onBack, onNotify }) => {
       }));
       
       setIsCropMode(false);
-      setCrop(undefined); // Reset
+      setCrop(undefined); 
       if(onNotify) onNotify("Page Cropped! ✂️", true);
   };
 
-  // Basic Image Rotation trick
   const rotateImage = () => {
     const img = new Image();
     img.onload = () => {
@@ -206,7 +205,7 @@ const DocScanner = ({ onBack, onNotify }) => {
     });
   };
 
-  // --- 📄 NATIVE PDF GENERATOR ---
+  // --- 📄 NATIVE PDF GENERATOR (Professional Save Fix) ---
   const generateAndSavePDF = async () => {
       if (pages.length === 0) return;
       setShowRenameDialog(false);
@@ -235,25 +234,29 @@ const DocScanner = ({ onBack, onNotify }) => {
           try {
               if (Capacitor.isNativePlatform()) {
                   setStatus("Asking Permission...");
-                  try { await Filesystem.requestPermissions(); } catch(e) {}
+                  try { await Filesystem.requestPermissions(); } catch(e) { console.log("Permission check bypass..."); }
                   
                   setStatus("Saving to Phone...");
                   const base64Data = await blobToBase64(pdfBlob);
+                  
+                  // 🔴 Yahan recursive: true zaroori tha
                   await Filesystem.writeFile({
                       path: finalPdfName,
                       data: base64Data,
-                      directory: Directory.Documents 
+                      directory: Directory.Documents,
+                      recursive: true
                   });
               } else {
                   pdf.save(finalPdfName);
               }
 
               setIsSaving(false); setStatus("");
-              if(onNotify) onNotify("PDF Saved to Documents! 📄✅", false, finalPdfName, "Scanned PDF", pdfBlob);
+              if(onNotify) onNotify(`✅ ${finalPdfName} Saved to Documents!`, false, finalPdfName, "Scanned PDF", pdfBlob);
 
           } catch (error) {
               console.error("Save Error: ", error);
-              alert("⚠️ Storage Permission Required!\nPlease allow storage access to save the PDF.");
+              // 🔴 Purana custom popup hataya, ab professional error message hai
+              alert("⚠️ Failed to Save.\nPhone settings mein jao aur Storage/Files permission allow karo.");
               setIsSaving(false); setStatus("");
           }
       };
@@ -380,12 +383,10 @@ const DocScanner = ({ onBack, onNotify }) => {
                  {isCropMode ? (
                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
                          <div style={{ flex: 1, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                             {/* 🔴 FASTEST & MOBILE FRIENDLY CROPPER */}
                              <ReactCrop crop={crop} onChange={c => setCrop(c)} style={{ maxWidth: '100%', maxHeight: '100%' }}>
                                 <img ref={imgRef} src={pages[activeIndex].src} style={{ maxHeight: '70vh', maxWidth: '100vw', objectFit: 'contain' }} alt="Crop Me" />
                              </ReactCrop>
                          </div>
-                         {/* ROTATE TOOLBAR */}
                          <div style={{ height: '70px', background: '#0f172a', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid #334155', zIndex: 10 }}>
                             <button onClick={rotateImage} style={{ background: '#1e293b', border: '1px solid #334155', color: 'white', padding: '10px 30px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
                                 <Icons.RotateRight /> Rotate Image
@@ -409,10 +410,8 @@ const DocScanner = ({ onBack, onNotify }) => {
          )}
       </div>
 
-      {/* TRAY & CONTROLS */}
       {!isCropMode && pages.length > 0 && (
           <>
-              {/* PAGE TRAY */}
               <div style={S.pageTray}>
                   {pages.map((page, idx) => (
                       <div 
@@ -434,7 +433,6 @@ const DocScanner = ({ onBack, onNotify }) => {
                   </div>
               </div>
 
-              {/* CONTROLS */}
               <div style={S.controlsArea}>
                   <div style={S.filterRow}>
                       <button style={S.filterBtn(pages[activeIndex]?.filter === 'original')} onClick={() => updateActivePage({ filter: 'original' })}>Original</button>
@@ -459,7 +457,6 @@ const DocScanner = ({ onBack, onNotify }) => {
                       <span style={{fontSize:'12px', color:'#3b82f6', fontWeight:'bold'}}>{pages.length} Pages Ready</span>
                   </div>
 
-                  {/* FINAL EXPORT */}
                   <button onClick={() => setShowRenameDialog(true)} disabled={isSaving} style={S.pdfButton}>
                       Save as PDF <Icons.PDF />
                   </button>

@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile, checkInternetAndDownload } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; // checkInternetAndDownload hata diya gaya hai
+import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save Import
 
 const MergePdf = ({ onNotify, isPremium }) => {
   const [files, setFiles] = useState([]);
@@ -30,6 +31,7 @@ const MergePdf = ({ onNotify, isPremium }) => {
   const runMerge = async () => {
     if (files.length < 2) return alert('Select 2+ files');
     setIsProcessing(true); setStatus('Merging PDFs...');
+    
     try {
       const merged = await PDFDocument.create();
       for (const f of files) {
@@ -37,10 +39,36 @@ const MergePdf = ({ onNotify, isPremium }) => {
         const pages = await merged.copyPages(pdf, pdf.getPageIndices());
         pages.forEach((p) => merged.addPage(p));
       }
-      const blob = new Blob([await merged.save()], { type: 'application/pdf' });
-      await checkInternetAndDownload(blob, 'ProUtility_Merged.pdf', 'Merged PDF', isPremium, setStatus, setIsProcessing, onNotify);
-    } catch { 
-      alert('Failed to Merge. Ensure PDFs are not password protected.'); 
+      
+      // 1. Get PDF Data
+      const pdfBytes = await merged.save();
+      
+      // 2. Convert to Base64 for Direct Save
+      let binary = '';
+      const bytes = new Uint8Array(pdfBytes);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Data = window.btoa(binary);
+
+      // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE (Bina kisi popup ke)
+      await Filesystem.writeFile({
+        path: `ProUtility_Merged_${Date.now()}.pdf`,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
+
+      // 4. Success Message aur Clear UI
+      if (onNotify) onNotify("✅ PDF Merged & Saved to Documents!");
+      setStatus('');
+      setIsProcessing(false);
+      setFiles([]); // Save hone ke baad file list clear kar dena professional lagta hai
+
+    } catch (error) { 
+      console.error("Save Error:", error);
+      alert('⚠️ Failed to Save. Phone settings mein jao aur Storage/Files permission allow karo.'); 
       setIsProcessing(false); setStatus('');
     }
   };

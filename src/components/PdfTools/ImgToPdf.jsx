@@ -1,14 +1,15 @@
 import React, { useState, useRef } from 'react';
 import jsPDF from 'jspdf';
 import { Icons } from '../Icons'; 
-import { readImage, checkInternetAndDownload } from '../../utils/pdfUtils';
+import { readImage } from '../../utils/pdfUtils'; // block wala function hata diya gaya hai
+import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save
 
 const ImgToPdf = ({ onNotify, isPremium }) => {
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
   const [reduceQuality, setReduceQuality] = useState(false);
-  const [outputName, setOutputName] = useState('Images_Converted'); // 🔴 RENAME FEATURE
+  const [outputName, setOutputName] = useState('Images_Converted'); 
   const fileInputRef = useRef(null);
 
   const handleUpload = (e) => {
@@ -32,10 +33,30 @@ const ImgToPdf = ({ onNotify, isPremium }) => {
         if (i > 0) doc.addPage();
         doc.addImage(imgData, 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), (props.height * doc.internal.pageSize.getWidth()) / props.width, undefined, reduceQuality ? 'FAST' : 'SLOW');
       }
-      const blob = doc.output('blob');
-      await checkInternetAndDownload(blob, `${outputName}.pdf`, 'Img to PDF', isPremium, setStatus, setIsProcessing, onNotify);
-    } catch { 
-      alert('Failed to convert images.'); 
+
+      // 1. Android ko direct permission ke liye bolna (Fake popup nahi)
+      try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+
+      // 2. jsPDF se direct Base64 Data nikalna (Yeh bahut fast hota hai)
+      const base64Data = doc.output('datauristring').split(',')[1];
+
+      // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE 
+      await Filesystem.writeFile({
+        path: `${outputName}.pdf`,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
+
+      // 4. Success Message aur Clear UI
+      if (onNotify) onNotify(`✅ ${outputName}.pdf Saved to Documents!`);
+      setStatus('');
+      setIsProcessing(false);
+      setFiles([]);
+
+    } catch (error) { 
+      console.error("Save Error:", error);
+      alert('⚠️ Failed to convert. Phone settings mein jao aur Storage/Files permission allow karo.'); 
       setIsProcessing(false); setStatus(''); 
     }
   };
