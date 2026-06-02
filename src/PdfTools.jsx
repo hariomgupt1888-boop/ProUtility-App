@@ -11,7 +11,7 @@ import ExtractText from './components/PdfTools/ExtractText';
 import TextToPdf from './components/PdfTools/TextToPdf';
 import RenamePdf from './components/PdfTools/RenamePdf';
 import PageOps from './components/PdfTools/PageOps';
-import EditMetadata from './components/PdfTools/EditMetadata';
+import EditMetadata from './components/PdfTools/EditMetaData';
 import ViewPdf from './components/PdfTools/ViewPdf';
 
 const PdfTools = ({ onBack, onNotify, onOpenSecurity }) => {
