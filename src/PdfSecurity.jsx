@@ -13,7 +13,6 @@ const Icons = {
   View: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
   Download: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
-  // 🔴 NAYA: Password Show/Hide Icons
   Eye: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
   EyeOff: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
 };
@@ -23,7 +22,7 @@ const readFile = (file) => new Promise(res => { const r = new FileReader(); r.on
 const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
   const [file, setFile] = useState(null);
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false); // 🔴 NAYA: State for Show/Hide Password
+  const [showPassword, setShowPassword] = useState(false); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [status, setStatus] = useState("");
@@ -90,16 +89,19 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
     });
   };
 
-  // 🔴 NAYA: Core Native Saving Logic (Fixed for proper storage access)
+  // 🔴 NAYA: Core Native Saving Logic
   const handleNativeSave = async (blob, fileName, fileType) => {
       try {
           if (Capacitor.isNativePlatform()) {
               setStatus("Saving to Phone...");
+              try { await Filesystem.requestPermissions(); } catch(e) {}
+              
               const base64Data = await blobToBase64(blob);
               await Filesystem.writeFile({
                   path: fileName,
                   data: base64Data,
-                  directory: Directory.Documents 
+                  directory: Directory.Documents,
+                  recursive: true 
               });
           } else {
               const url = window.URL.createObjectURL(blob);
@@ -110,13 +112,14 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
               link.click(); 
               document.body.removeChild(link);
           }
-          if (onNotify) onNotify(`Saved to Documents! ✅`, false, fileName, fileType, blob);
+          if (onNotify) onNotify(`✅ Saved ${fileName} to Documents!`, false, fileName, fileType, blob);
       } catch (error) {
           console.error("Save Error: ", error);
           alert("⚠️ Storage Error!\nPlease ensure you have allowed storage permissions.");
       }
   };
 
+  // 🔴 THE FIX: Ad Gate wrapper
   const checkInternetAndDownload = async (blob, fileName, fileType) => {
     if (isPremium) {
       await handleNativeSave(blob, fileName, fileType);
@@ -152,12 +155,19 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
         const encryptedBytes = await encryptPDF(uint8Array, password);
         
         const blob = new Blob([encryptedBytes], { type: 'application/pdf' });
-        await checkInternetAndDownload(blob, `Locked_${file.name}`, "Locked PDF");
+        // 🔴 NAYA: Added Timestamp to Filename
+        const finalName = `Locked_${Date.now()}_${file.name}`;
+        
+        await checkInternetAndDownload(blob, finalName, "Locked PDF");
     } catch (error) {
         console.error(error);
         alert("Failed to lock. File might already be encrypted or corrupted.");
+    } finally {
+        // 🧹 JHAADU (Cleanup)
         setIsProcessing(false);
         setStatus("");
+        setFile(null);
+        setPassword("");
     }
   };
 
@@ -181,9 +191,10 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
     } catch (error) {
         console.error(error);
         alert("❌ Wrong Password or File is not encrypted!");
+    } finally {
+        setIsProcessing(false);
+        setStatus("");
     }
-    setIsProcessing(false);
-    setStatus("");
   };
 
   // --- 🔓 UNLOCK: DOWNLOAD (PREMIUM) LOGIC ---
@@ -202,16 +213,22 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
         const decryptedBytes = await decryptPDF(uint8Array, password);
         
         const blob = new Blob([decryptedBytes], { type: 'application/pdf' });
-        const fileName = `Unlocked_${file.name}`;
+        // 🔴 NAYA: Added Timestamp to Filename
+        const finalName = `Unlocked_${Date.now()}_${file.name}`;
         
-        await handleNativeSave(blob, fileName, "Unlocked PDF");
+        await handleNativeSave(blob, finalName, "Unlocked PDF");
         
     } catch (error) {
         console.error(error);
         alert("❌ Wrong Password! Could not decrypt the file.");
+    } finally {
+        // 🧹 JHAADU (Cleanup)
+        setIsProcessing(false);
+        setStatus("");
+        setFile(null);
+        setPassword("");
+        setViewerDoc(null);
     }
-    setIsProcessing(false);
-    setStatus("");
   };
 
   return (
@@ -257,7 +274,7 @@ const PdfSecurity = ({ onBack, onNotify, mode = 'lock' }) => {
                     <button onClick={() => {setFile(null); setPassword(""); setViewerDoc(null);}} style={{color:'#ef4444', background:'none', border:'none', fontSize:'12px', fontWeight:'bold', cursor:'pointer', touchAction: 'manipulation'}}>✕ Remove</button>
                 </div>
 
-                {/* 🔴 NAYA: Password Input with Show/Hide Button */}
+                {/* Password Input with Show/Hide Button */}
                 <div style={{textAlign: 'left', marginTop: '10px'}}>
                     <p style={{margin:'0 0 8px 0', fontSize:'13px', fontWeight:'bold', color: mode==='lock' ? '#2563eb' : '#ef4444'}}>
                         {mode === 'lock' ? '🔒 Set a strong password:' : '🔓 Enter PDF Password:'}

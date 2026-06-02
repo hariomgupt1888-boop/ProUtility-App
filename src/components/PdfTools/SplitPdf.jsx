@@ -1,20 +1,21 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile, checkInternetAndDownload, handleNativeSave } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; // Purane functions hata diye gaye hain
+import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save
 
 const SplitPdf = ({ onNotify, isPremium }) => {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
-  const [outputPrefix, setOutputPrefix] = useState('Split_Page'); // 🔴 RENAME FEATURE
+  const [outputPrefix, setOutputPrefix] = useState('Split_Page'); 
   const fileInputRef = useRef(null);
 
   const handleUpload = (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const uploadedFile = e.target.files[0];
     setFile(uploadedFile);
-    setOutputPrefix(uploadedFile.name.replace('.pdf', '')); // Set base name automatically
+    setOutputPrefix(uploadedFile.name.replace('.pdf', '')); 
     if (onNotify) onNotify(null, true);
     e.target.value = null;
   };
@@ -22,31 +23,71 @@ const SplitPdf = ({ onNotify, isPremium }) => {
   const runSplit = async () => {
     if (!file) return;
     if (!outputPrefix.trim()) return alert("Please enter a valid base name!");
-    if (!isPremium && !navigator.onLine) return alert('⚠️ Internet Required for Free Users!');
+    
+    // Ad Gate Internet Check
+    if (!isPremium && !navigator.onLine) {
+        return alert('⚠️ Internet Required!\nFree users need internet to process. Enable internet, or Upgrade to Premium.');
+    }
 
-    setIsProcessing(true); setStatus('Splitting Pages...');
+    setIsProcessing(true); 
+    
     try {
+      // 👑 AD GATE LOGIC (Loop se pehle ek baar)
+      if (!isPremium) {
+          setStatus("Loading Ad...");
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+      }
+
+      setStatus('Reading PDF...');
       const pdf = await PDFDocument.load(await readFile(file));
       const totalPages = pdf.getPageCount();
-      
+
+      // Request Permission just once before the loop
+      try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+
       for (let i = 0; i < totalPages; i++) {
+        setStatus(`Saving Page ${i + 1} of ${totalPages}...`);
+        
         const newPdf = await PDFDocument.create();
         const [page] = await newPdf.copyPages(pdf, [i]);
         newPdf.addPage(page);
-        const blob = new Blob([await newPdf.save()], { type: 'application/pdf' });
         
-        // Save individually. Only show Ad on the first page if free user to avoid spamming ads.
-        if (i === 0) {
-            await checkInternetAndDownload(blob, `${outputPrefix}_${i + 1}.pdf`, 'Split PDF', isPremium, setStatus, null, null);
-        } else {
-            await handleNativeSave(blob, `${outputPrefix}_${i + 1}.pdf`, 'Split PDF');
+        // 1. Convert to Base64
+        const pdfBytes = await newPdf.save();
+        let binary = '';
+        const bytes = new Uint8Array(pdfBytes);
+        const len = bytes.byteLength;
+        for (let j = 0; j < len; j++) {
+            binary += String.fromCharCode(bytes[j]);
         }
-        await new Promise((r) => setTimeout(r, 400)); // Delay to prevent OS block
+        const base64Data = window.btoa(binary);
+        
+        // 2. 🔴 NAYA FIX: Timestamp joda gaya taaki loop ke dauran bhi overwrite error na aaye
+        const finalName = `${outputPrefix}_Pg${i + 1}_${Date.now()}.pdf`;
+
+        // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE
+        await Filesystem.writeFile({
+          path: finalName,
+          data: base64Data,
+          directory: Directory.Documents,
+          recursive: true
+        });
+
+        // Halka sa pause taaki OS background mein hang na ho
+        await new Promise((r) => setTimeout(r, 300)); 
       }
-      if (onNotify) onNotify('All pages separated successfully! ✅', false);
-    } catch { alert('Failed to Split. File might be encrypted.'); }
-    
-    setIsProcessing(false); setStatus('');
+      
+      if (onNotify) onNotify(`✅ Successfully split and saved ${totalPages} pages!`, false);
+
+    } catch (error) { 
+        console.error("Split PDF Error:", error);
+        alert('⚠️ Failed to Split. File might be encrypted or permission missing.'); 
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsProcessing(false); 
+        setStatus('');
+        setFile(null); // File ko RAM se hata diya
+    }
   };
 
   return (

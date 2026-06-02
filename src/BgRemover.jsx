@@ -22,7 +22,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   
   const [processedImage, setProcessedImage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0); // 🔴 NAYA PROGRESS STATE
+  const [downloadProgress, setDownloadProgress] = useState(0); 
   
   const [isPremium, setIsPremium] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
@@ -84,15 +84,14 @@ const BgRemover = ({ onBack, onNotify }) => {
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
-    setDownloadProgress(0); // Shuru mein 0%
+    setDownloadProgress(0); 
     
     try {
       const config = {
-        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.3/dist/", 
+        publicPath: "https://static.imgly.com/@imgly/background-removal/1.4.3/dist/", 
         model: 'small', 
         device: 'cpu', 
         progress: (key, current, total) => {
-            // 🔴 NAYA BEAUTIFUL PROGRESS LOGIC
             const percent = Math.round((current / total) * 100);
             setDownloadProgress(percent);
         }
@@ -109,7 +108,6 @@ const BgRemover = ({ onBack, onNotify }) => {
       
     } catch (e) {
       console.error("AI Error:", e);
-      // Puraane error popup ki jagah notification aur seedha manual mode
       if (onNotify) onNotify("⚠️ AI couldn't detect subject. Switched to Manual Mode.");
       
       setProcessedImage(image); 
@@ -261,54 +259,41 @@ const BgRemover = ({ onBack, onNotify }) => {
     });
   };
 
-  const checkInternetAndDownload = async (dataUrl, fileName, blob) => {
-    const executeDownload = async () => {
-      try {
-        if (Capacitor.isNativePlatform()) {
-           setIsSaving(true);
-           setSaveStatus("Saving to Phone...");
-           try { await Filesystem.requestPermissions(); } catch (e) { }
+  const executeDownload = async (dataUrl, fileName, blob) => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+         setIsSaving(true);
+         setSaveStatus("Saving to Phone...");
+         try { await Filesystem.requestPermissions(); } catch (e) { }
 
-           const base64Data = await blobToBase64(blob);
-           
-           await Filesystem.writeFile({
-             path: fileName,
-             data: base64Data,
-             directory: Directory.Documents,
-             recursive: true
-           });
-           
-           if(onNotify) onNotify("✅ Saved successfully to Documents folder!", false);
-        } else {
-           const link = document.createElement('a');
-           link.download = fileName;
-           link.href = dataUrl;
-           link.click();
-        }
-        setIsSaving(false);
-        setSaveStatus("");
-
-      } catch (error) {
-        console.error("Save Error:", error);
-        alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
-        setIsSaving(false);
-        setSaveStatus("");
+         const base64Data = await blobToBase64(blob);
+         
+         await Filesystem.writeFile({
+           path: fileName,
+           data: base64Data,
+           directory: Directory.Documents,
+           recursive: true
+         });
+         
+         if(onNotify) onNotify("✅ Saved successfully to Documents folder!", false);
+      } else {
+         const link = document.createElement('a');
+         link.download = fileName;
+         link.href = dataUrl;
+         link.click();
       }
-    };
-
-    if (isPremium) {
-      await executeDownload();
-      return;
-    }
-
-    if (navigator.onLine) {
-      setIsSaving(true);
-      setSaveStatus("Loading Ad...");
-      setTimeout(async () => { await executeDownload(); }, 2000); 
-    } else {
-      alert("⚠️ Internet Required for Free Users.");
-      setIsSaving(false);
-      setSaveStatus("");
+    } catch (error) {
+      console.error("Save Error:", error);
+      alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsSaving(false);
+        setSaveStatus("");
+        
+        // Agar aap chahte hain image clear ho jaye
+        setImage(null);
+        setImageBlob(null);
+        setProcessedImage(null);
     }
   };
 
@@ -318,7 +303,22 @@ const BgRemover = ({ onBack, onNotify }) => {
         try {
             const response = await fetch(dataUrl);
             const blob = await response.blob();
-            await checkInternetAndDownload(dataUrl, `ProUtility_Cutout_${Date.now()}.png`, blob);
+            // 🔴 NAYA FIX: Timestamp (Date.now()) joda gaya
+            const finalName = `ProUtility_Cutout_${Date.now()}.png`;
+
+            // 👑 PREMIUM & AD GATE LOGIC
+            if (isPremium) {
+              await executeDownload(dataUrl, finalName, blob);
+            } else {
+              if (navigator.onLine) {
+                setIsSaving(true);
+                setSaveStatus("Loading Ad...");
+                setTimeout(async () => { await executeDownload(dataUrl, finalName, blob); }, 2000); 
+              } else {
+                alert("⚠️ Internet Required for Free Users.");
+              }
+            }
+
         } catch (e) {
             alert("Failed to process image.");
         }

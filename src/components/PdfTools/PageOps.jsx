@@ -1,14 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile, checkInternetAndDownload } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const PageOps = ({ mode, onNotify, isPremium }) => {
   const [file, setFile] = useState(null);
   const [pageData, setPageData] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
-  const [outputName, setOutputName] = useState('Modified_Document'); // 🔴 RENAME FEATURE
+  const [outputName, setOutputName] = useState('Modified_Document'); 
   const [draggedItem, setDraggedItem] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -23,7 +24,6 @@ const PageOps = ({ mode, onNotify, isPremium }) => {
       const count = pdfDoc.getPageCount();
       let thumbnails = [];
       
-      // Generate Page Previews using window.pdfjsLib
       if (window.pdfjsLib) {
         const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
         const maxPages = count > 30 ? 30 : count; // Limit to 30 for performance
@@ -97,11 +97,54 @@ const PageOps = ({ mode, onNotify, isPremium }) => {
         newPdf.addPage(page);
       }
       
-      const blob = new Blob([await newPdf.save()], { type: 'application/pdf' });
-      await checkInternetAndDownload(blob, `${outputName}.pdf`, 'Modified PDF', isPremium, setStatus, setIsProcessing, onNotify);
-    } catch { 
-      alert('Failed to process pages.'); 
-      setIsProcessing(false); setStatus(''); 
+      // 1. Convert to Base64
+      const pdfBytes = await newPdf.save();
+      let binary = '';
+      const bytes = new Uint8Array(pdfBytes);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Data = window.btoa(binary);
+
+      // 💾 Asli Save Function
+      const performSave = async () => {
+          setStatus("Saving to Phone...");
+          try { await Filesystem.requestPermissions(); } catch (e) { }
+          const finalName = `${outputName}_${Date.now()}.pdf`; // 🔴 Timestamp
+
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+
+          if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+      };
+
+      // 👑 PREMIUM & AD GATE LOGIC
+      if (isPremium) {
+          await performSave();
+      } else {
+          if (navigator.onLine) {
+              setStatus("Loading Ad...");
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+              await performSave();
+          } else {
+              alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+      }
+
+    } catch (error) { 
+        console.error(error);
+        alert('⚠️ Failed to save. Please allow Storage permission.'); 
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsProcessing(false); 
+        setStatus('');
+        setFile(null);
+        setPageData([]);
     }
   };
 
@@ -163,7 +206,6 @@ const PageOps = ({ mode, onNotify, isPremium }) => {
             ))}
           </div>
 
-          {/* 🔴 RENAME FEATURE UI */}
           <div>
              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px', display: 'block' }}>Save As (Rename):</label>
              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden' }}>
@@ -173,7 +215,7 @@ const PageOps = ({ mode, onNotify, isPremium }) => {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-             <button onClick={() => setFile(null)} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+             <button onClick={() => {setFile(null); setPageData([]);}} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
              <button onClick={runPageOps} disabled={isProcessing} style={{ flex: 2, background: '#8b5cf6', color: 'white', padding: '14px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)', cursor: 'pointer' }}>Save Changes</button>
           </div>
         </div>

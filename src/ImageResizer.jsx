@@ -159,17 +159,18 @@ const ImageResizer = ({ onBack, onNotify }) => {
            }
         }
 
-        setIsProcessing(false);
-        setStatus("");
-
       } catch (error) {
         console.error("Critical Save Error: ", error);
         alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
+      } finally {
+        // 🧹 JHAADU (Cleanup)
         setIsProcessing(false);
         setStatus("");
+        setImages([]); // Ek baar save ho gaya toh screen saaf kar do
       }
     };
 
+    // 👑 Ad Gate Logic
     if (isPremium) {
       await executeDownload();
       return;

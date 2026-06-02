@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import jsPDF from 'jspdf';
 import { Icons } from '../Icons'; 
-import { readImage } from '../../utils/pdfUtils'; // block wala function hata diya gaya hai
-import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save
+import { readImage } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const ImgToPdf = ({ onNotify, isPremium }) => {
   const [files, setFiles] = useState([]);
@@ -34,30 +34,45 @@ const ImgToPdf = ({ onNotify, isPremium }) => {
         doc.addImage(imgData, 'JPEG', 0, 0, doc.internal.pageSize.getWidth(), (props.height * doc.internal.pageSize.getWidth()) / props.width, undefined, reduceQuality ? 'FAST' : 'SLOW');
       }
 
-      // 1. Android ko direct permission ke liye bolna (Fake popup nahi)
-      try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+      // 💾 Asli Save Function
+      const performSave = async () => {
+          setStatus("Saving to Phone...");
+          try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+          
+          const base64Data = doc.output('datauristring').split(',')[1];
+          const finalName = `${outputName}_${Date.now()}.pdf`; // 🔴 Timestamp yahan hai
 
-      // 2. jsPDF se direct Base64 Data nikalna (Yeh bahut fast hota hai)
-      const base64Data = doc.output('datauristring').split(',')[1];
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
 
-      // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE 
-      await Filesystem.writeFile({
-        path: `${outputName}.pdf`,
-        data: base64Data,
-        directory: Directory.Documents,
-        recursive: true
-      });
+          if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+      };
 
-      // 4. Success Message aur Clear UI
-      if (onNotify) onNotify(`✅ ${outputName}.pdf Saved to Documents!`);
-      setStatus('');
-      setIsProcessing(false);
-      setFiles([]);
+      // 👑 PREMIUM & AD GATE LOGIC
+      if (isPremium) {
+          await performSave();
+      } else {
+          if (navigator.onLine) {
+              setStatus("Loading Ad...");
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec wait for ad
+              await performSave();
+          } else {
+              alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+      }
 
-    } catch (error) { 
-      console.error("Save Error:", error);
-      alert('⚠️ Failed to convert. Phone settings mein jao aur Storage/Files permission allow karo.'); 
-      setIsProcessing(false); setStatus(''); 
+    } catch (error) {
+        console.error(error);
+        alert('⚠️ Failed to save. Please allow Storage permission.');
+    } finally {
+        // 🧹 CLEANUP: Save hone (ya fail hone) ke baad Jhaadu lagani hai
+        setIsProcessing(false);
+        setStatus('');
+        setFiles([]); 
     }
   };
 

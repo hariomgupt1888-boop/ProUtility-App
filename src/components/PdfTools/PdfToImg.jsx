@@ -1,19 +1,20 @@
 import React, { useState, useRef } from 'react';
 import { Icons } from '../Icons'; 
-import { readFile, handleNativeSave, checkInternetAndDownload } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const PdfToImg = ({ onNotify, isPremium }) => {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
-  const [outputPrefix, setOutputPrefix] = useState('Extracted_Img'); // 🔴 RENAME FEATURE
+  const [outputPrefix, setOutputPrefix] = useState('Extracted_Img'); 
   const fileInputRef = useRef(null);
 
   const handleUpload = (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const uploadedFile = e.target.files[0];
     setFile(uploadedFile);
-    setOutputPrefix(uploadedFile.name.replace('.pdf', '')); // Base name
+    setOutputPrefix(uploadedFile.name.replace('.pdf', '')); 
     if (onNotify) onNotify(null, true);
     e.target.value = null;
   };
@@ -21,33 +22,67 @@ const PdfToImg = ({ onNotify, isPremium }) => {
   const runPdfToImg = async () => {
     if (!file) return;
     if (!outputPrefix.trim()) return alert("Please enter a valid base name!");
-    if (!isPremium && !navigator.onLine) return alert('⚠️ Internet Required for Free Users!');
+    
+    // Ad Gate Internet Check
+    if (!isPremium && !navigator.onLine) {
+        return alert('⚠️ Internet Required!\nFree users need internet to process. Enable internet, or Upgrade to Premium.');
+    }
 
-    setIsProcessing(true); setStatus('Extracting Images...');
+    setIsProcessing(true); 
+    
     try {
+      // 👑 AD GATE LOGIC (Pehle Ad dikhao, fir process shuru karo)
+      if (!isPremium) {
+          setStatus("Loading Ad...");
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+      }
+
+      setStatus('Extracting Images...');
       const buffer = await readFile(file);
       const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
       
-      for (let i = 1; i <= pdf.numPages; i++) {
+      // Request Permission just once before the loop
+      try { await Filesystem.requestPermissions(); } catch (e) { }
+
+      const totalPages = pdf.numPages;
+
+      for (let i = 1; i <= totalPages; i++) {
+        setStatus(`Saving Image ${i} of ${totalPages}...`);
         const page = await pdf.getPage(i);
         const viewport = page.getViewport({ scale: 2.0 });
         const canvas = document.createElement('canvas');
         canvas.height = viewport.height; canvas.width = viewport.width;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         
-        const imgBlob = await (await fetch(canvas.toDataURL('image/png'))).blob();
+        // 1. Direct Base64 for Image
+        const base64Data = canvas.toDataURL('image/png').split(',')[1];
         
-        if (i === 1) {
-            await checkInternetAndDownload(imgBlob, `${outputPrefix}_${i}.png`, 'Extracted Image', isPremium, setStatus, null, null);
-        } else {
-            await handleNativeSave(imgBlob, `${outputPrefix}_${i}.png`, 'Extracted Image');
-        }
-        await new Promise((r) => setTimeout(r, 300));
+        // 2. 🔴 NAYA FIX: Timestamp joda gaya taaki naam overwrite na ho (Loop ke hisaab se)
+        const finalName = `${outputPrefix}_Pg${i}_${Date.now()}.png`;
+
+        // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE
+        await Filesystem.writeFile({
+          path: finalName,
+          data: base64Data,
+          directory: Directory.Documents,
+          recursive: true
+        });
+
+        // Halka sa pause taaki phone hang na ho (Performance ke liye zaroori)
+        await new Promise((r) => setTimeout(r, 200));
       }
-      if (onNotify) onNotify('Images Extracted Successfully! 🖼️', false);
-    } catch { alert('Failed to extract images.'); }
-    
-    setIsProcessing(false); setStatus('');
+      
+      if (onNotify) onNotify(`✅ Successfully saved ${totalPages} image(s) to Documents!`, false);
+
+    } catch (error) { 
+        console.error("PDF to Img Error:", error);
+        alert('⚠️ Failed to extract images. Please check permissions or file format.'); 
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsProcessing(false); 
+        setStatus('');
+        setFile(null);
+    }
   };
 
   return (

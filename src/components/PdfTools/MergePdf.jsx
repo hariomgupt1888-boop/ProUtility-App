@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile } from '../../utils/pdfUtils'; // checkInternetAndDownload hata diya gaya hai
-import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save Import
+import { readFile } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const MergePdf = ({ onNotify, isPremium }) => {
   const [files, setFiles] = useState([]);
@@ -40,10 +40,9 @@ const MergePdf = ({ onNotify, isPremium }) => {
         pages.forEach((p) => merged.addPage(p));
       }
       
-      // 1. Get PDF Data
       const pdfBytes = await merged.save();
       
-      // 2. Convert to Base64 for Direct Save
+      // 1. Convert to Base64
       let binary = '';
       const bytes = new Uint8Array(pdfBytes);
       const len = bytes.byteLength;
@@ -52,24 +51,44 @@ const MergePdf = ({ onNotify, isPremium }) => {
       }
       const base64Data = window.btoa(binary);
 
-      // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE (Bina kisi popup ke)
-      await Filesystem.writeFile({
-        path: `ProUtility_Merged_${Date.now()}.pdf`,
-        data: base64Data,
-        directory: Directory.Documents,
-        recursive: true
-      });
+      // 💾 Asli Save Function
+      const performSave = async () => {
+          setStatus("Saving to Phone...");
+          try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+          
+          const finalName = `ProUtility_Merged_${Date.now()}.pdf`; // 🔴 Timestamp
 
-      // 4. Success Message aur Clear UI
-      if (onNotify) onNotify("✅ PDF Merged & Saved to Documents!");
-      setStatus('');
-      setIsProcessing(false);
-      setFiles([]); // Save hone ke baad file list clear kar dena professional lagta hai
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
 
-    } catch (error) { 
-      console.error("Save Error:", error);
-      alert('⚠️ Failed to Save. Phone settings mein jao aur Storage/Files permission allow karo.'); 
-      setIsProcessing(false); setStatus('');
+          if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+      };
+
+      // 👑 PREMIUM & AD GATE LOGIC
+      if (isPremium) {
+          await performSave();
+      } else {
+          if (navigator.onLine) {
+              setStatus("Loading Ad...");
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+              await performSave();
+          } else {
+              alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+      }
+
+    } catch (error) {
+        console.error("Save error:", error);
+        alert('⚠️ Failed to save. Please allow Storage permission.');
+    } finally {
+        // 🧹 CLEANUP: Save hone (ya fail hone) ke baad Jhaadu
+        setIsProcessing(false);
+        setStatus('');
+        setFiles([]); 
     }
   };
 

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import jsPDF from 'jspdf';
 import { Icons } from '../Icons'; 
-import { Filesystem, Directory } from '@capacitor/filesystem'; // Naya Professional Save Import
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const TextToPdf = ({ onNotify, isPremium }) => {
   const [textInput, setTextInput] = useState('');
-  const [outputName, setOutputName] = useState('Text_Document'); // 🔴 RENAME FEATURE
+  const [outputName, setOutputName] = useState('Text_Document'); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -13,36 +13,52 @@ const TextToPdf = ({ onNotify, isPremium }) => {
     if (!textInput.trim()) return alert('Please write something first!');
     if (!outputName.trim()) return alert("Please enter a valid file name!");
 
-    setIsProcessing(true); setStatus('Creating PDF...');
+    setIsProcessing(true); 
+    
     try {
       const doc = new jsPDF();
       // Auto-wrap text at 180 width to fit page
       doc.text(doc.splitTextToSize(textInput, 180), 10, 10);
       
-      // 1. Android ko direct permission ke liye bolna
-      try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+      // 💾 Asli Save Function
+      const performSave = async () => {
+          setStatus("Saving to Phone...");
+          try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
 
-      // 2. jsPDF se direct Base64 Data nikalna
-      const base64Data = doc.output('datauristring').split(',')[1];
+          const base64Data = doc.output('datauristring').split(',')[1];
+          const finalName = `${outputName}_${Date.now()}.pdf`; // 🔴 Timestamp yahan hai
 
-      // 3. SEEDHA PHONE KE DOCUMENTS FOLDER MEIN SAVE 
-      await Filesystem.writeFile({
-        path: `${outputName}.pdf`,
-        data: base64Data,
-        directory: Directory.Documents,
-        recursive: true
-      });
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
 
-      // 4. Success Message aur Clear UI
-      if (onNotify) onNotify(`✅ ${outputName}.pdf Saved to Documents!`);
-      setStatus('');
-      setIsProcessing(false);
-      setTextInput(''); // Professional feel: Save hone ke baad box khali karna
+          if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+      };
 
-    } catch (error) { 
-      console.error("Save Error:", error);
-      alert('⚠️ Failed to save. Phone settings mein jao aur Storage/Files permission allow karo.'); 
-      setIsProcessing(false); setStatus(''); 
+      // 👑 PREMIUM & AD GATE LOGIC
+      if (isPremium) {
+          await performSave();
+      } else {
+          if (navigator.onLine) {
+              setStatus("Loading Ad...");
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+              await performSave();
+          } else {
+              alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+      }
+
+    } catch (error) {
+        console.error(error);
+        alert('⚠️ Failed to save. Please allow Storage permission.');
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsProcessing(false);
+        setStatus('');
+        setTextInput(''); 
     }
   };
 

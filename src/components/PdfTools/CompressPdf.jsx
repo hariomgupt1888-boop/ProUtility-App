@@ -1,21 +1,22 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile, checkInternetAndDownload, formatSize } from '../../utils/pdfUtils';
+import { readFile, formatSize } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const CompressPdf = ({ onNotify, isPremium }) => {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
   const [compressLevel, setCompressLevel] = useState(50);
-  const [outputName, setOutputName] = useState('Compressed_PDF'); // 🔴 RENAME FEATURE
+  const [outputName, setOutputName] = useState('Compressed_PDF'); 
   const fileInputRef = useRef(null);
 
   const handleUpload = (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const uploadedFile = e.target.files[0];
     setFile(uploadedFile);
-    setOutputName(uploadedFile.name.replace('.pdf', '') + '_Min'); // Auto-fill smart name
+    setOutputName(uploadedFile.name.replace('.pdf', '') + '_Min'); 
     if (onNotify) onNotify(null, true);
     e.target.value = null;
   };
@@ -27,13 +28,51 @@ const CompressPdf = ({ onNotify, isPremium }) => {
     setIsProcessing(true); setStatus('Compressing...');
     try {
       const pdf = await PDFDocument.load(await readFile(file));
-      const blob = new Blob([await pdf.save({ useObjectStreams: false })], { type: 'application/pdf' });
+      const pdfBytes = await pdf.save({ useObjectStreams: false });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       
-      // Premium & Ad logic inside checkInternetAndDownload
-      await checkInternetAndDownload(blob, `${outputName}.pdf`, 'Compressed PDF', isPremium, setStatus, setIsProcessing, onNotify);
-    } catch { 
-      alert('Failed to Compress. Ensure PDF is not locked.'); 
-      setIsProcessing(false); setStatus(''); 
+      const base64Data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(blob);
+      });
+
+      // 💾 Asli Save Function
+      const performSave = async () => {
+          setStatus("Saving to Phone...");
+          try { await Filesystem.requestPermissions(); } catch (e) { }
+          const finalName = `${outputName}_${Date.now()}.pdf`;
+          
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+          if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+      };
+
+      // 👑 PREMIUM & AD GATE LOGIC
+      if (isPremium) {
+          await performSave();
+      } else {
+          if (navigator.onLine) {
+              setStatus("Loading Ad...");
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second Ad wait
+              await performSave();
+          } else {
+              alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+      }
+
+    } catch (error) {
+        console.error("Save error:", error);
+        alert('⚠️ Failed to process. Please allow Storage permission.');
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsProcessing(false);
+        setStatus('');
+        setFile(null); 
     }
   };
 
@@ -71,7 +110,6 @@ const CompressPdf = ({ onNotify, isPremium }) => {
             <p style={{ fontSize: '13px', color: '#16a34a', fontWeight: 'bold', marginTop: '10px' }}>Est. Size: ~{formatSize(file.size * (1 - compressLevel / 100))}</p>
           </div>
 
-          {/* 🔴 RENAME FEATURE UI */}
           <div>
              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px', display: 'block' }}>Save As (Rename):</label>
              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden' }}>

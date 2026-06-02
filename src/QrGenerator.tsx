@@ -1,201 +1,298 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { Capacitor } from '@capacitor/core'; // 🔴 NAYA: Native Android Check
-import { Filesystem, Directory } from '@capacitor/filesystem'; // 🔴 NAYA: Storage & Permissions
+import { Capacitor } from '@capacitor/core'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 // --- PREMIUM ICONS ---
 const Icons = {
-  Back: () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>),
-  Download: () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>)
+  Close: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  ChevronDown: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>
 };
 
 const QrGenerator = ({ onBack, isPremium, setSavedFile, onNotify }) => {
   const [text, setText] = useState("");
   const [qrUrl, setQrUrl] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   
-  // --- NAYA: Ad & Saving States ---
+  // --- NEW UI STATES ---
+  const [activeTab, setActiveTab] = useState('link'); // link, style, color, format
+  const [qrColor, setQrColor] = useState('#000000');
+  const [fileFormat, setFileFormat] = useState('PNG'); // PNG, JPG, SVG
+
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState("");
 
-  // --- 1. QR GENERATE KARNE KA LOGIC ---
-  const generateQR = async () => {
-    // Agar input khali hai toh alert do
-    if (!text.trim()) {
-        return alert("Bhai, please enter a valid URL, Number, or Text!");
+  // --- AUTO GENERATE QR ON CHANGE ---
+  useEffect(() => {
+    if (text.trim()) {
+      QRCode.toDataURL(text.trim(), { 
+          width: 800, 
+          margin: 2,  
+          color: { dark: qrColor, light: '#ffffff' }
+      })
+      .then(url => setQrUrl(url))
+      .catch(err => console.error(err));
+    } else {
+      setQrUrl(""); // Clear QR if text is empty
     }
-    
-    setIsGenerating(true);
-    try {
-      // HD Quality aur High Contrast QR Code generate karna
-      const url = await QRCode.toDataURL(text.trim(), { 
-          width: 800, // High-Resolution Image
-          margin: 2,  // Border margin
-          color: {
-              dark: '#000000',  // Black dots for best scanning
-              light: '#ffffff'  // White background (Even in dark mode)
-          }
-      });
-      setQrUrl(url);
-      
-      // Haptic feedback jab QR generate ho
-      if(onNotify) onNotify(null, true); 
+  }, [text, qrColor]);
 
-    } catch (e) { 
-      alert("Failed to generate QR Code. Please try again."); 
-      console.error(e);
-    }
-    setIsGenerating(false);
-  };
-
-  // 🔴 NAYA: Base64 Helper for Native Storage
+  // --- BASE64 HELPER ---
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = reject;
-      reader.onload = () => {
-         const base64Data = reader.result.split(',')[1];
-         resolve(base64Data);
-      };
+      reader.onload = () => resolve(reader.result.split(',')[1]);
       reader.readAsDataURL(blob);
     });
   };
 
- // --- 2. 100% NATIVE DOWNLOAD LOGIC WITH AD GATEKEEPER ---
+ // --- 100% NATIVE DOWNLOAD LOGIC ---
  const handleDownload = async () => {
+  if (!qrUrl) return alert("Please enter some text or link to generate a QR Code first!");
+
+  setIsSaving(true);
   try {
-      // Data URL ko asli Blob file mein convert karna
-      const res = await fetch(qrUrl);
-      const blobObj = await res.blob();
+      let finalDataUrl = qrUrl;
+      let blobObj;
+
+      // Handle SVG separately if selected
+      if (fileFormat === 'SVG') {
+          const svgString = await QRCode.toString(text.trim(), { type: 'svg', color: { dark: qrColor, light: '#ffffff' } });
+          blobObj = new Blob([svgString], { type: 'image/svg+xml' });
+      } else if (fileFormat === 'JPG') {
+          // Convert PNG dataURL to JPG using Canvas
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const img = new Image();
+          img.src = qrUrl;
+          await new Promise(r => { img.onload = r; });
+          canvas.width = img.width; canvas.height = img.height;
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          finalDataUrl = canvas.toDataURL('image/jpeg', 1.0);
+          blobObj = await (await fetch(finalDataUrl)).blob();
+      } else {
+          // Default PNG
+          blobObj = await (await fetch(qrUrl)).blob();
+      }
       
       const executeDownload = async () => {
           try {
-              const fileName = `ProUtility_QR_${Date.now()}.png`;
+              const ext = fileFormat.toLowerCase();
+              const fileName = `ProUtility_QR_${Date.now()}.${ext}`;
 
-              // 🔴 NATIVE ANDROID SAVE LOGIC
               if (Capacitor.isNativePlatform()) {
-                  setStatus("Asking Permission...");
-                  await Filesystem.requestPermissions();
                   setStatus("Saving to Phone...");
+                  try { await Filesystem.requestPermissions(); } catch(e) {}
 
                   const base64Data = await blobToBase64(blobObj);
                   await Filesystem.writeFile({
                       path: fileName,
                       data: base64Data,
-                      directory: Directory.Documents 
+                      directory: Directory.Documents,
+                      recursive: true
                   });
-              } 
-              // 🌐 WEB BROWSER FALLBACK LOGIC
-              else {
+              } else {
                   const link = document.createElement('a');
-                  link.href = qrUrl;
+                  link.href = fileFormat === 'SVG' ? URL.createObjectURL(blobObj) : finalDataUrl;
                   link.download = fileName; 
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
               }
 
-              setIsSaving(false);
-              setStatus("");
-
-              // 🔴 RECENT FILES ME UPDATE
-              if (onNotify) {
-                  onNotify("QR Code Saved to Phone! ✅", false, fileName, "QR Code", blobObj);
-              }
+              if (onNotify) onNotify(`QR Code Saved as ${fileFormat}! ✅`, false);
 
           } catch (err) {
               console.error("Save Error:", err);
-              alert("⚠️ Storage Permission Required!\nPlease allow storage access to save the QR Code.");
+              alert("⚠️ Storage Permission Required to save the QR Code.");
+          } finally {
+              // 🧹 CLEANUP (Jhaadu)
               setIsSaving(false);
               setStatus("");
+              setText(""); // Form reset
           }
       };
 
+      // 👑 PREMIUM & AD GATE
       if (isPremium) {
           await executeDownload();
       } else {
           if (navigator.onLine) {
-              setIsSaving(true);
               setStatus("Loading Ad...");
-              setTimeout(async () => {
-                  await executeDownload();
-              }, 2000); // 2 seconds ad simulation
+              setTimeout(async () => { await executeDownload(); }, 2000);
           } else {
-              alert("⚠️ Internet Required!\n\nFree users need internet to save files. Enable internet to watch a quick Ad, or Upgrade to Premium.");
+              alert("⚠️ Internet Required!\nFree users need internet to save files. Enable internet or Upgrade to Premium.");
+              setIsSaving(false);
+              setStatus("");
           }
       }
 
   } catch(e) {
       console.error("Download Error:", e);
-      alert("Something went wrong while downloading the file.");
-      setIsSaving(false);
-      setStatus("");
+      alert("Something went wrong while saving.");
+      setIsSaving(false); setStatus("");
   }
 };
 
+  // --- STYLES ---
+  const S = {
+    wrapper: { position: 'fixed', inset: 0, backgroundColor: '#f8fafc', color: '#0f172a', display: 'flex', flexDirection: 'column', zIndex: 9999, fontFamily: 'sans-serif' },
+    header: { height: '70px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px', backgroundColor: '#f8fafc' },
+    title: { fontSize: '22px', fontWeight: 'bold', margin: 0 },
+    closeBtn: { background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '5px' },
+    
+    // 🔴 FIX FOR AD-BLOCK HIDING BUTTONS: Exta paddingBottom
+    scrollArea: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', paddingBottom: '120px' },
+    
+    qrCard: { backgroundColor: 'white', padding: '20px', borderRadius: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', maxWidth: '300px', aspectRatio: '1/1', marginBottom: '30px' },
+    qrPlaceholder: { color: '#94a3b8', fontSize: '14px', fontWeight: 'bold' },
+    qrImage: { width: '100%', height: '100%', objectFit: 'contain' },
+    
+    tabsWrapper: { display: 'flex', gap: '10px', width: '100%', overflowX: 'auto', paddingBottom: '15px', marginBottom: '10px', scrollbarWidth: 'none' },
+    tabBtn: (isActive) => ({ padding: '8px 16px', borderRadius: '20px', fontWeight: 'bold', fontSize: '14px', whiteSpace: 'nowrap', cursor: 'pointer', transition: '0.2s', border: 'none', backgroundColor: isActive ? '#e2e8f0' : 'transparent', color: isActive ? '#0f172a' : '#64748b' }),
+    
+    tabContent: { width: '100%', display: 'flex', flexDirection: 'column', gap: '20px' },
+    
+    textarea: { width: '100%', minHeight: '120px', padding: '15px', borderRadius: '16px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '16px', outline: 'none', resize: 'none', color: '#0f172a' },
+    
+    colorRow: { display: 'flex', gap: '12px' },
+    colorSwatch: (c, isActive) => ({ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: c, cursor: 'pointer', border: isActive ? '3px solid #0f172a' : '1px solid #cbd5e1', outline: isActive ? '2px solid white' : 'none', outlineOffset: '-4px' }),
+    
+    selectBox: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', borderRadius: '12px', backgroundColor: '#e2e8f0', cursor: 'pointer', fontWeight: 'bold' },
+    
+    actionRow: { display: 'flex', gap: '15px', width: '100%', marginTop: '30px' },
+    btnPrimary: { flex: 1, padding: '16px', borderRadius: '100px', backgroundColor: '#e2e8f0', color: '#94a3b8', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer', transition: '0.3s' },
+    btnPrimaryActive: { backgroundColor: '#3b82f6', color: 'white', cursor: 'pointer' },
+    btnSecondary: { flex: 1, padding: '16px', borderRadius: '100px', backgroundColor: 'transparent', border: '2px solid #e2e8f0', color: '#64748b', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }
+  };
+
+  const COLORS = ['#000000', '#1d4ed8', '#f97316', '#ef4444', '#16a34a'];
+
   return (
-    <div style={{padding:'20px', height:'100%', background:'var(--bg-main)', display:'flex', flexDirection:'column', transition: 'background-color 0.3s ease', position: 'relative'}}>
-      
+    <div style={S.wrapper}>
+      <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+
       {/* AD / PROCESSING OVERLAY */}
       {isSaving && (
-        <div style={{position:'absolute', inset:0, background:'rgba(15,23,42,0.9)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', zIndex:50}}>
+        <div style={{position:'absolute', inset:0, background:'rgba(255,255,255,0.9)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', zIndex:50}}>
             <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
-            <span style={{color: 'white', marginTop: '20px', fontWeight: 'bold', fontSize: '18px'}}>{status}</span>
+            <span style={{color: '#0f172a', marginTop: '20px', fontWeight: 'bold', fontSize: '18px'}}>{status}</span>
         </div>
       )}
 
       {/* HEADER */}
-      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'25px'}}>
-        <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-          <button onClick={onBack} style={{background:'var(--bg-card)', border:'1px solid var(--border-color)', color:'var(--text-main)', borderRadius:'50%', width:'40px', height:'40px', display:'flex', alignItems:'center', justifyContent:'center', cursor: 'pointer', transition: '0.3s', touchAction: 'manipulation'}}>
-            <Icons.Back/>
-          </button>
-          <h2 style={{margin:0, color:'var(--text-main)', fontSize:'22px'}}>QR Generator</h2>
-        </div>
-        <div style={{padding: '6px 15px', borderRadius:'20px', background: isPremium ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', fontSize:'12px', fontWeight:'bold', boxShadow: isPremium ? '0 4px 10px rgba(245, 158, 11, 0.3)' : 'none'}}>
-          {isPremium ? "PRO" : "FREE"}
-        </div>
+      <div style={S.header}>
+        <h2 style={S.title}>Generate QR code</h2>
+        <button onClick={onBack} style={S.closeBtn}><Icons.Close /></button>
       </div>
 
-      {/* MAIN WORKSPACE */}
-      <div style={{flex:1, background:'var(--bg-card)', borderRadius:'24px', padding:'25px 20px', display:'flex', flexDirection:'column', alignItems:'center', border:'1px solid var(--border-color)', boxShadow: '0 4px 20px rgba(0,0,0,0.02)'}}>
-         
-         <p style={{alignSelf: 'flex-start', margin: '0 0 10px 5px', color: 'var(--text-main)', fontWeight: 'bold', fontSize: '14px'}}>Enter Data:</p>
-         
-         <textarea 
-            value={text} 
-            onChange={(e) => setText(e.target.value)} 
-            placeholder="Type URL, Phone Number, Email, or any Text here..." 
-            style={{width:'100%', minHeight:'100px', padding:'15px', borderRadius:'15px', background:'var(--bg-input)', color:'var(--text-main)', border:'1px solid var(--border-color)', marginBottom:'20px', fontSize:'16px', resize:'vertical', fontFamily: 'inherit'}}
-         />
-         
-         <button onClick={generateQR} disabled={isGenerating} style={{width:'100%', padding:'16px', background:'#3b82f6', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isGenerating ? 'not-allowed' : 'pointer', boxShadow: '0 4px 15px rgba(59, 130, 246, 0.4)', transition: '0.2s', touchAction: 'manipulation'}}>
-            {isGenerating ? "Generating..." : "Generate QR Code"}
-         </button>
+      {/* SCROLLABLE AREA */}
+      <div style={S.scrollArea}>
+        
+        {/* QR PREVIEW CARD */}
+        <div style={S.qrCard}>
+            {qrUrl ? (
+                <img src={qrUrl} alt="QR Code" style={S.qrImage} />
+            ) : (
+                <span style={S.qrPlaceholder}>Enter data to generate</span>
+            )}
+        </div>
 
-         {/* RESULT AREA */}
-         {qrUrl && (
-           <div style={{marginTop:'35px', textAlign:'center', width:'100%', display:'flex', flexDirection:'column', alignItems:'center', animation: 'fadeIn 0.5s ease'}}>
-              <p style={{margin: '0 0 15px 0', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 'bold'}}>Your QR Code is Ready 👇</p>
-              
-              <div style={{background: 'white', padding: '15px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', marginBottom: '25px'}}>
-                  <img src={qrUrl} alt="Generated QR" style={{width:'200px', height:'200px', objectFit:'contain', display: 'block'}}/>
-              </div>
+        {/* TABS */}
+        <div style={S.tabsWrapper}>
+            <button style={S.tabBtn(activeTab === 'link')} onClick={() => setActiveTab('link')}>Link</button>
+            <button style={S.tabBtn(activeTab === 'style')} onClick={() => setActiveTab('style')}>Style</button>
+            <button style={S.tabBtn(activeTab === 'color')} onClick={() => setActiveTab('color')}>Color</button>
+            <button style={S.tabBtn(activeTab === 'format')} onClick={() => setActiveTab('format')}>File format</button>
+        </div>
 
-              <button onClick={handleDownload} disabled={isSaving} style={{width:'100%', padding:'16px', background:'#10b981', color:'white', borderRadius:'15px', border:'none', fontWeight:'bold', fontSize:'16px', cursor: isSaving ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.4)', touchAction: 'manipulation'}}>
-                  <Icons.Download /> Download PNG
-              </button>
-           </div>
-         )}
+        {/* TAB CONTENT */}
+        <div style={S.tabContent}>
+            
+            {/* LINK TAB */}
+            {activeTab === 'link' && (
+                <textarea 
+                    style={S.textarea} 
+                    placeholder="Enter URL, Text, or Phone Number here..." 
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                />
+            )}
+
+            {/* STYLE TAB (MOCK UI TO MATCH SCREENSHOT) */}
+            {activeTab === 'style' && (
+                <div style={{display: 'flex', flexDirection: 'column', gap: '20px'}}>
+                    <div>
+                        <p style={{fontSize: '14px', color: '#64748b', marginBottom: '10px', fontWeight: 'bold'}}>Dots</p>
+                        <div style={{display: 'flex', gap: '10px'}}>
+                            <div style={{width: '50px', height: '50px', borderRadius: '12px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><div style={{width: '20px', height: '20px', background: '#0f172a'}}></div></div>
+                            <div style={{width: '50px', height: '50px', borderRadius: '12px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><div style={{width: '20px', height: '20px', background: '#0f172a', borderRadius: '6px'}}></div></div>
+                            <div style={{width: '50px', height: '50px', borderRadius: '12px', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center'}}><div style={{width: '20px', height: '20px', background: 'white', borderRadius: '50%'}}></div></div>
+                        </div>
+                    </div>
+                    <div>
+                        <p style={{fontSize: '14px', color: '#64748b', marginBottom: '10px', fontWeight: 'bold'}}>Marker border</p>
+                        <div style={{display: 'flex', gap: '10px'}}>
+                            <div style={{width: '50px', height: '50px', borderRadius: '12px', background: '#e2e8f0', border: '3px solid #0f172a'}}></div>
+                            <div style={{width: '50px', height: '50px', borderRadius: '12px', background: '#0f172a', border: '3px solid #0f172a', position: 'relative'}}><div style={{position: 'absolute', inset: '4px', background: '#e2e8f0', borderRadius: '6px'}}></div></div>
+                            <div style={{width: '50px', height: '50px', borderRadius: '12px', background: '#e2e8f0', border: '3px solid #0f172a', borderRadius: '50%'}}></div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* COLOR TAB */}
+            {activeTab === 'color' && (
+                <div>
+                    <p style={{fontSize: '14px', color: '#64748b', marginBottom: '10px', fontWeight: 'bold'}}>QR Color</p>
+                    <div style={S.colorRow}>
+                        {COLORS.map(c => (
+                            <div key={c} style={S.colorSwatch(c, qrColor === c)} onClick={() => setQrColor(c)}></div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* FORMAT TAB */}
+            {activeTab === 'format' && (
+                <div>
+                    <p style={{fontSize: '14px', color: '#64748b', marginBottom: '10px', fontWeight: 'bold'}}>File format</p>
+                    <div style={S.selectBox}>
+                        <span>{fileFormat}</span>
+                        <Icons.ChevronDown />
+                    </div>
+                    <div style={{marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '15px'}}>
+                        <div onClick={() => setFileFormat('PNG')} style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: fileFormat === 'PNG' ? '#3b82f6' : '#0f172a', fontWeight: 'bold'}}>
+                           {fileFormat === 'PNG' && <span style={{color: '#3b82f6'}}>✔</span>} PNG (Best For Images)
+                        </div>
+                        <div onClick={() => setFileFormat('JPG')} style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: fileFormat === 'JPG' ? '#3b82f6' : '#0f172a', fontWeight: 'bold'}}>
+                           {fileFormat === 'JPG' && <span style={{color: '#3b82f6'}}>✔</span>} JPG
+                        </div>
+                        <div onClick={() => setFileFormat('SVG')} style={{display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: fileFormat === 'SVG' ? '#3b82f6' : '#0f172a', fontWeight: 'bold'}}>
+                           {fileFormat === 'SVG' && <span style={{color: '#3b82f6'}}>✔</span>} SVG (Scalable Vector)
+                        </div>
+                    </div>
+                </div>
+            )}
+
+        </div>
+
+        {/* BOTTOM ACTION BUTTONS */}
+        <div style={S.actionRow}>
+            <button 
+                onClick={handleDownload} 
+                disabled={!qrUrl || isSaving} 
+                style={{...S.btnPrimary, ...(qrUrl ? S.btnPrimaryActive : {})}}
+            >
+                Download
+            </button>
+            <button style={S.btnSecondary} onClick={() => alert("Editor integration coming soon!")}>
+                Open in editor
+            </button>
+        </div>
+
       </div>
-
-      {/* Simple fade-in animation and spin for the result and overlay */}
-      <style>
-        {`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        `}
-      </style>
     </div>
   );
 };

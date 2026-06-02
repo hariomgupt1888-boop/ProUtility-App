@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import ReactCrop from 'react-image-crop'; // 🔴 NAYA STABLE CROPPER
+import ReactCrop from 'react-image-crop'; 
 import 'react-image-crop/dist/ReactCrop.css';
 import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
@@ -34,7 +34,6 @@ const PhotoEditor = ({ onBack, onNotify }) => {
   const [isCropMode, setIsCropMode] = useState(false);
   const [aspectRatio, setAspectRatio] = useState(NaN); 
 
-  // 🔴 NAYA CROPPER STATES
   const [crop, setCrop] = useState();
   const imgRef = useRef(null);
 
@@ -63,7 +62,6 @@ const PhotoEditor = ({ onBack, onNotify }) => {
     if (axis === 'y') updateSetting('flipY', settings.flipY === 1 ? -1 : 1);
   };
 
-  // 🔴 NAYA: Professional High-Res Crop Logic (react-image-crop)
   const handleCropConfirm = () => {
     if (!crop || !imgRef.current || !crop.width || !crop.height) {
       setIsCropMode(false);
@@ -93,73 +91,11 @@ const PhotoEditor = ({ onBack, onNotify }) => {
     const croppedDataUrl = canvas.toDataURL('image/jpeg', 1.0);
     setImage(croppedDataUrl); 
     setIsCropMode(false);
-    setCrop(undefined); // Reset state
+    setCrop(undefined); 
     if(onNotify) onNotify("Image Cropped Perfectly! ✂️", true); 
   };
 
-  const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = reject;
-      reader.onload = () => {
-         const base64Data = reader.result.split(',')[1];
-         resolve(base64Data);
-      };
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  const handleNativeSave = async (blob, fileName, fileType) => {
-      try {
-          if (Capacitor.isNativePlatform()) {
-              setStatus("Saving to Phone...");
-              const base64Data = await blobToBase64(blob);
-              await Filesystem.writeFile({
-                  path: fileName, 
-                  data: base64Data,
-                  directory: Directory.Documents 
-              });
-          } else {
-              const url = window.URL.createObjectURL(blob);
-              const link = document.createElement('a'); 
-              link.href = url; 
-              link.download = fileName;
-              document.body.appendChild(link); 
-              link.click(); 
-              document.body.removeChild(link);
-          }
-
-          if (onNotify) onNotify(`Photo Saved to Phone! ✅`, false, fileName, fileType, blob);
-      } catch (error) {
-          console.error("Save Error: ", error);
-          alert("⚠️ Storage Permission Required!\nPlease allow storage access to save the file.");
-      }
-  };
-
-  const checkInternetAndDownload = async (dataUrl, fileName, blob) => {
-    if (isPremium) {
-      await handleNativeSave(blob, fileName, "Edited Photo");
-      setIsProcessing(false);
-      setStatus("");
-      return;
-    }
-
-    if (navigator.onLine) {
-      setIsProcessing(true);
-      setStatus("Loading Ad...");
-      
-      setTimeout(async () => {
-        await handleNativeSave(blob, fileName, "Edited Photo");
-        setIsProcessing(false);
-        setStatus("");
-      }, 2000); 
-    } else {
-      setIsProcessing(false);
-      setStatus("");
-      alert("⚠️ Internet Required!\n\nFree users need internet to save images. Enable internet to watch a quick Ad, or Upgrade to Premium for offline saving.");
-    }
-  };
-
+  // 🔴 THE FIX: Ultra-fast Combined Save Engine (Ad Gate + Save + Cleanup)
   const handleSave = () => {
     if (!image || isProcessing) return;
     setIsProcessing(true);
@@ -181,14 +117,55 @@ const PhotoEditor = ({ onBack, onNotify }) => {
       const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
       
       try {
-        const response = await fetch(dataUrl);
-        const blob = await response.blob();
-        checkInternetAndDownload(dataUrl, `ProUtility_Edited_${Date.now()}.jpg`, blob);
+          const finalName = `ProUtility_Edited_${Date.now()}.jpg`;
+
+          const performSave = async () => {
+              setStatus("Saving to Phone...");
+              if (Capacitor.isNativePlatform()) {
+                  try { await Filesystem.requestPermissions(); } catch(e) { console.log("Permission bypass..."); }
+                  
+                  // Extract base64 directly from dataUrl (Very Fast)
+                  const base64Data = dataUrl.split(',')[1];
+                  
+                  await Filesystem.writeFile({
+                      path: finalName,
+                      data: base64Data,
+                      directory: Directory.Documents,
+                      recursive: true
+                  });
+              } else {
+                  const link = document.createElement('a');
+                  link.href = dataUrl;
+                  link.download = finalName;
+                  link.click();
+              }
+              if(onNotify) onNotify("Photo Saved Successfully! ✅", false);
+          };
+
+          // 👑 PREMIUM & AD GATE LOGIC
+          if (isPremium) {
+              await performSave();
+          } else {
+              if (navigator.onLine) {
+                  setStatus("Loading Ad...");
+                  await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+                  await performSave();
+              } else {
+                  alert("⚠️ Internet Required!\n\nFree users need internet to save images. Enable internet to watch a quick Ad, or Upgrade to Premium.");
+                  return; // Stop process so user doesn't lose progress
+              }
+          }
+
+          // 🧹 CLEANUP (Jhaadu) - Execute only if save is successful
+          setImage(null);
+          setSettings(DEFAULT_SETTINGS);
+
       } catch (err) {
-        console.error("Failed to convert to blob", err);
-        alert("Failed to save image.");
-        setIsProcessing(false);
-        setStatus("");
+          console.error("Save Error:", err);
+          alert("⚠️ Failed to save image. Please allow Storage permissions.");
+      } finally {
+          setIsProcessing(false);
+          setStatus("");
       }
     };
     img.src = image;
@@ -261,7 +238,7 @@ const PhotoEditor = ({ onBack, onNotify }) => {
                     <ReactCrop 
                         crop={crop} 
                         onChange={c => setCrop(c)} 
-                        aspect={isNaN(aspectRatio) ? undefined : aspectRatio} // Aspect Ratio handling
+                        aspect={isNaN(aspectRatio) ? undefined : aspectRatio} 
                         style={{ maxWidth: '100%', maxHeight: '100%' }}
                     >
                         <img ref={imgRef} src={image} style={{ maxHeight: '70vh', maxWidth: '100vw', objectFit: 'contain' }} alt="Crop Base" />

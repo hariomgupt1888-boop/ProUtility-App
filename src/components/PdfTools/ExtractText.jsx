@@ -1,13 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { Icons } from '../Icons'; 
-import { readFile, checkInternetAndDownload } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const ExtractText = ({ onNotify, isPremium }) => {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
   const [extractedText, setExtractedText] = useState('');
-  const [outputName, setOutputName] = useState('Extracted_Text'); // 🔴 RENAME FEATURE
+  const [outputName, setOutputName] = useState('Extracted_Text'); 
   const fileInputRef = useRef(null);
 
   const handleUpload = (e) => {
@@ -15,7 +16,7 @@ const ExtractText = ({ onNotify, isPremium }) => {
     const uploadedFile = e.target.files[0];
     setFile(uploadedFile);
     setOutputName(uploadedFile.name.replace('.pdf', '')); 
-    setExtractedText(''); // Reset previous text
+    setExtractedText(''); 
     if (onNotify) onNotify(null, true);
     e.target.value = null;
   };
@@ -39,15 +40,56 @@ const ExtractText = ({ onNotify, isPremium }) => {
       if (onNotify) onNotify("Text Extracted! 📝", false);
     } catch (e) { 
       alert("No readable text found in this PDF (might be an image-only PDF)."); 
+    } finally {
+      setIsProcessing(false);
+      setStatus('');
     }
-    setIsProcessing(false); setStatus("");
   };
 
   const saveTextFile = async () => {
     if (!outputName.trim()) return alert("Please enter a valid file name!");
-    setIsProcessing(true); setStatus("Saving TXT File...");
-    const txtBlob = new Blob([extractedText], { type: 'text/plain' });
-    await checkInternetAndDownload(txtBlob, `${outputName}.txt`, 'Extracted Text', isPremium, setStatus, setIsProcessing, onNotify);
+    setIsProcessing(true); setStatus("Preparing TXT File...");
+    
+    try {
+      const base64Data = window.btoa(unescape(encodeURIComponent(extractedText)));
+      
+      // 💾 Asli Save Function
+      const performSave = async () => {
+          setStatus("Saving to Phone...");
+          try { await Filesystem.requestPermissions(); } catch (e) { }
+          const finalName = `${outputName}_${Date.now()}.txt`;
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+          if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+      };
+
+      // 👑 PREMIUM & AD GATE LOGIC
+      if (isPremium) {
+          await performSave();
+      } else {
+          if (navigator.onLine) {
+              setStatus("Loading Ad...");
+              await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second Ad wait
+              await performSave();
+          } else {
+              alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+      }
+
+    } catch (error) {
+      console.error("Save error:", error);
+      alert('⚠️ Failed to save. Please allow Storage permission.');
+    } finally {
+      // 🧹 CLEANUP (Jhaadu)
+      setIsProcessing(false); 
+      setStatus('');
+      setFile(null);
+      setExtractedText('');
+    }
   };
 
   return (

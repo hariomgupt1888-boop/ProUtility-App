@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile, handleNativeSave } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; // 🔴 Purana save hata diya
+import { Filesystem, Directory } from '@capacitor/filesystem'; // 🔴 Naya Professional Save
 
 const EditMetadata = ({ onNotify, isPremium }) => {
   // 🔴 STRICT PREMIUM LOCK
@@ -54,9 +55,11 @@ const EditMetadata = ({ onNotify, isPremium }) => {
       setOutputName(uploadedFile.name.replace('.pdf', '') + '_Pro'); 
     } catch (err) { 
       alert('Failed to read file. Ensure it is not encrypted.'); 
+    } finally {
+      // 🧹 CLEANUP: Error aaye ya na aaye, loading band karni hai
+      setIsProcessing(false); setStatus('');
+      e.target.value = null;
     }
-    setIsProcessing(false); setStatus('');
-    e.target.value = null;
   };
 
   const handleInputChange = (field, value) => {
@@ -77,13 +80,36 @@ const EditMetadata = ({ onNotify, isPremium }) => {
       if (metaInfo.keywords) pdfDoc.setKeywords(metaInfo.keywords);
       if (metaInfo.creator) pdfDoc.setCreator(metaInfo.creator);
       
-      const blob = new Blob([await pdfDoc.save()], { type: 'application/pdf' });
-      await handleNativeSave(blob, `${outputName}.pdf`, 'Updated PDF');
-      if (onNotify) onNotify('Metadata Updated Successfully! 🚀', false);
+      // 1. Direct Base64 conversion (Fastest)
+      const base64Data = await pdfDoc.saveAsBase64({ dataUri: false });
+      
+      // 2. Android Permission & Direct Save
+      try { await Filesystem.requestPermissions(); } catch (e) { }
+
+      // 🔴 NAYA FIX: Timestamp joda gaya taaki naam overwrite na ho
+      const finalName = `${outputName}_${Date.now()}.pdf`;
+
+      await Filesystem.writeFile({
+        path: finalName,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
+
+      if (onNotify) onNotify('✅ Metadata Updated & Saved!', false);
+      
+      // 🧹 CLEANUP: Save hone ke baad file screen se hata dein taaki RAM khali ho
+      setFile(null);
+      setMetaInfo({ title: '', author: '', subject: '', keywords: '', creator: '' });
+
     } catch (e) { 
-        alert('Failed to update PDF properties.'); 
+        console.error(e);
+        alert('⚠️ Failed to save. Phone settings mein jao aur Storage/Files permission allow karo.'); 
+    } finally {
+        // 🧹 CLEANUP: Yeh finally block app ko freeze hone se bachata hai
+        setIsProcessing(false); 
+        setStatus('');
     }
-    setIsProcessing(false); setStatus('');
   };
 
   return (
@@ -143,7 +169,10 @@ const EditMetadata = ({ onNotify, isPremium }) => {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-             <button onClick={() => setFile(null)} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+             <button onClick={() => {
+                setFile(null); // 🧹 CLEAR MEMORY on Cancel
+             }} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+             
              <button onClick={runMetadataEditor} disabled={isProcessing} style={{ flex: 2, background: '#8b5cf6', color: 'white', padding: '14px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)', cursor: 'pointer' }}>Update Properties</button>
           </div>
         </div>

@@ -196,11 +196,7 @@ const DocScanner = ({ onBack, onNotify }) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = reject;
-      reader.onload = () => {
-         const result = reader.result;
-         const base64Data = result.split(',')[1];
-         resolve(base64Data);
-      };
+      reader.onload = () => resolve(reader.result.split(',')[1]);
       reader.readAsDataURL(blob);
     });
   };
@@ -215,52 +211,55 @@ const DocScanner = ({ onBack, onNotify }) => {
           setStatus("Compiling PDF...");
           const pdf = new jsPDF('p', 'mm', 'a4');
           
-          for (let i = 0; i < pages.length; i++) {
-              setStatus(`Enhancing Page ${i + 1} of ${pages.length}...`);
-              const page = pages[i];
-              const processedImg = await applyMagicFilter(page.src, page.filter, page.contrast);
-              const imgProps = pdf.getImageProperties(processedImg);
-              const pdfWidth = pdf.internal.pageSize.getWidth();
-              const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-              if (i > 0) pdf.addPage();
-              pdf.addImage(processedImg, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-          }
-
-          setStatus("Saving File...");
-          const finalPdfName = `${pdfName || 'Document'}.pdf`;
-          const pdfBlob = pdf.output('blob');
-
           try {
-              if (Capacitor.isNativePlatform()) {
-                  setStatus("Asking Permission...");
-                  try { await Filesystem.requestPermissions(); } catch(e) { console.log("Permission check bypass..."); }
-                  
-                  setStatus("Saving to Phone...");
-                  const base64Data = await blobToBase64(pdfBlob);
-                  
-                  // 🔴 Yahan recursive: true zaroori tha
-                  await Filesystem.writeFile({
-                      path: finalPdfName,
-                      data: base64Data,
-                      directory: Directory.Documents,
-                      recursive: true
-                  });
-              } else {
-                  pdf.save(finalPdfName);
-              }
+            for (let i = 0; i < pages.length; i++) {
+                setStatus(`Enhancing Page ${i + 1} of ${pages.length}...`);
+                const page = pages[i];
+                const processedImg = await applyMagicFilter(page.src, page.filter, page.contrast);
+                const imgProps = pdf.getImageProperties(processedImg);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-              setIsSaving(false); setStatus("");
-              if(onNotify) onNotify(`✅ ${finalPdfName} Saved to Documents!`, false, finalPdfName, "Scanned PDF", pdfBlob);
+                if (i > 0) pdf.addPage();
+                pdf.addImage(processedImg, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            }
+
+            setStatus("Saving to Phone...");
+            const pdfBlob = pdf.output('blob');
+            
+            // 🔴 Unique Timestamp Added here!
+            const finalPdfName = `${pdfName || 'Document'}_${Date.now()}.pdf`;
+
+            if (Capacitor.isNativePlatform()) {
+                try { await Filesystem.requestPermissions(); } catch(e) { console.log("Permission proceed..."); }
+                
+                const base64Data = await blobToBase64(pdfBlob);
+                
+                await Filesystem.writeFile({
+                    path: finalPdfName,
+                    data: base64Data,
+                    directory: Directory.Documents,
+                    recursive: true
+                });
+            } else {
+                pdf.save(finalPdfName);
+            }
+
+            if(onNotify) onNotify(`✅ Saved ${finalPdfName} to Documents!`, false);
 
           } catch (error) {
               console.error("Save Error: ", error);
-              // 🔴 Purana custom popup hataya, ab professional error message hai
               alert("⚠️ Failed to Save.\nPhone settings mein jao aur Storage/Files permission allow karo.");
-              setIsSaving(false); setStatus("");
+          } finally {
+              // 🧹 CLEANUP (Jhaadu)
+              setIsSaving(false); 
+              setStatus("");
+              setPages([]); // Clear memory
+              setActiveIndex(0);
           }
       };
 
+      // 👑 PREMIUM & AD GATE LOGIC
       if (isPremium) {
           await executeSave();
       } else {

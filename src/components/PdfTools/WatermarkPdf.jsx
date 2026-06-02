@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile, checkInternetAndDownload } from '../../utils/pdfUtils';
+import { readFile } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 const WatermarkPdf = ({ onNotify, isPremium }) => {
   const [file, setFile] = useState(null);
@@ -110,8 +111,19 @@ const WatermarkPdf = ({ onNotify, isPremium }) => {
     if (validWatermarks.length === 0) return alert('Please add at least one watermark!');
     if (!outputName.trim()) return alert("Please enter a valid file name!");
 
-    setIsProcessing(true); setStatus("Applying Watermark to All Pages...");
+    setIsProcessing(true); 
+    
     try {
+      // 👑 AD GATE LOGIC
+      if (!isPremium) {
+          if (!navigator.onLine) {
+              return alert("⚠️ Internet Required!\n\nFree users need internet to export. Enable internet, or Upgrade to Premium.");
+          }
+          setStatus("Loading Ad...");
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2 sec Ad wait
+      }
+
+      setStatus("Applying Watermark to All Pages...");
       const pdfDocExport = await PDFDocument.load(await readFile(file));
       const pages = pdfDocExport.getPages();
       
@@ -131,11 +143,42 @@ const WatermarkPdf = ({ onNotify, isPremium }) => {
         });
       });
       
-      const blob = new Blob([await pdfDocExport.save()], { type: 'application/pdf' });
-      await checkInternetAndDownload(blob, `${outputName}.pdf`, 'Watermarked PDF', isPremium, setStatus, setIsProcessing, onNotify);
+      // 1. Convert to Base64
+      const pdfBytes = await pdfDocExport.save();
+      let binary = '';
+      const bytes = new Uint8Array(pdfBytes);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+      }
+      const base64Data = window.btoa(binary);
+
+      // 💾 Asli Save Function
+      setStatus("Saving to Phone...");
+      try { await Filesystem.requestPermissions(); } catch (e) { console.log("Permission proceed..."); }
+      
+      const finalName = `${outputName}_${Date.now()}.pdf`; // 🔴 Timestamp
+
+      await Filesystem.writeFile({
+        path: finalName,
+        data: base64Data,
+        directory: Directory.Documents,
+        recursive: true
+      });
+
+      if (onNotify) onNotify(`✅ Saved ${finalName} to Documents!`, false);
+
     } catch (e) { 
-      alert('Failed to apply watermark.'); 
-      setIsProcessing(false); setStatus(''); 
+        console.error(e);
+        alert('⚠️ Failed to apply watermark. Please check permissions.'); 
+    } finally {
+        // 🧹 CLEANUP (Jhaadu)
+        setIsProcessing(false); 
+        setStatus(''); 
+        setFile(null);
+        setPdfDoc(null);
+        setPreviewImg(null);
+        setWatermarks([]);
     }
   };
 
@@ -240,7 +283,7 @@ const WatermarkPdf = ({ onNotify, isPremium }) => {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-             <button onClick={() => {setFile(null); setPreviewImg(null); setWatermarks([]);}} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+             <button onClick={() => {setFile(null); setPreviewImg(null); setPdfDoc(null); setWatermarks([]);}} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
              <button onClick={runWatermark} disabled={isProcessing} style={{ flex: 2, background: '#0ea5e9', color: 'white', padding: '14px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(14, 165, 233, 0.4)', cursor: 'pointer' }}>Apply & Save</button>
           </div>
         </div>
