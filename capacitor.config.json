@@ -4,9 +4,11 @@
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
-    "androidScheme": "http",
+    "androidScheme": "https",
     "cleartext": true,
     "allowNavigation": [
+      "*.imgly.com",
+      "*.jsdelivr.net",
       "*"
     ]
   },

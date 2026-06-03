@@ -4,6 +4,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { FileOpener } from '@capacitor-community/file-opener';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Camera } from '@capacitor/camera'; // 🔴 NAYA: Camera Import
 import QRCode from 'qrcode'; 
 import './ProUtility.css';
 
@@ -139,18 +140,21 @@ const ProUtilityApp = () => {
     fetchRecentFiles();
   }, [activeModal]);
 
-  // 🔴 1. STARTUP PERMISSIONS & SPLASH SCREEN FIX
+  // 🔴 1. STARTUP PERMISSIONS & SPLASH SCREEN FIX (Permission Guard)
   useEffect(() => {
     const initApp = async () => {
       if (Capacitor.isNativePlatform()) {
         await SplashScreen.hide();
         
-        // App khulte hi sirf pehli baar Storage Access mangna
+        // App khulte hi Camera aur Storage ki permission maangna
         try {
-          const status = await Filesystem.checkPermissions();
-          if (status.publicStorage !== 'granted') {
-             await Filesystem.requestPermissions();
-          }
+          // 1. Storage Permission
+          await Filesystem.requestPermissions();
+          
+          // 2. Camera Permission
+          await Camera.requestPermissions();
+          
+          console.log("Permissions granted by user!");
         } catch (e) {
           console.log("Permission Error", e);
         }

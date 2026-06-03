@@ -81,6 +81,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
+  // 🔴 YAHAN AAPKA AI DOWNLOAD FIX HAI
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
@@ -88,6 +89,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const config = {
+        // 🔴 Path ko "https" force kiya hai taaki Capacitor Android me block na ho
         publicPath: "https://static.imgly.com/@imgly/background-removal/1.4.3/dist/", 
         model: 'small', 
         device: 'cpu', 
@@ -289,8 +291,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         // 🧹 CLEANUP (Jhaadu)
         setIsSaving(false);
         setSaveStatus("");
-        
-        // Agar aap chahte hain image clear ho jaye
         setImage(null);
         setImageBlob(null);
         setProcessedImage(null);
@@ -303,7 +303,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         try {
             const response = await fetch(dataUrl);
             const blob = await response.blob();
-            // 🔴 NAYA FIX: Timestamp (Date.now()) joda gaya
             const finalName = `ProUtility_Cutout_${Date.now()}.png`;
 
             // 👑 PREMIUM & AD GATE LOGIC
@@ -332,7 +331,10 @@ const BgRemover = ({ onBack, onNotify }) => {
     checkerboard: { position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)', backgroundSize: '20px 20px' },
     container: { transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s', position: 'relative' },
     ghostImg: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: editMode === 'restore' ? 0.4 : 0, transition: 'opacity 0.3s', pointerEvents: 'none' },
-    bottomBar: { background: '#1e293b', borderTop: '1px solid #334155', paddingBottom: 'env(safe-area-inset-bottom)' },
+    
+    // 🔴 FIX FOR AD MOB BANNER
+    bottomBar: { background: '#1e293b', borderTop: '1px solid #334155', paddingBottom: '90px' }, 
+    
     actionRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 20px', background: '#0f172a', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' },
     undoGroup: { display: 'flex', gap: '20px' },
     sliderWrapper: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '15px' },
