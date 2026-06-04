@@ -4,7 +4,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { FileOpener } from '@capacitor-community/file-opener';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Camera } from '@capacitor/camera'; // 🔴 NAYA: Camera Import
+import { Camera } from '@capacitor/camera'; 
 import QRCode from 'qrcode'; 
 import './ProUtility.css';
 
@@ -136,23 +136,11 @@ const ProUtilityApp = () => {
     setRecentFiles(files.slice(0, 11)); 
   };
 
-  useEffect(() => {
-    // Jab app bahar (WhatsApp/File Manager) se khulegi
-    CapacitorApp.addListener('appUrlOpen', (data) => {
-      if (data.url && (data.url.includes('.pdf') || data.url.startsWith('content://'))) {
-          // Yahan hum WhatsApp ki file pakad lenge
-          alert("✅ WhatsApp File Received: " + data.url);
-          
-          // 🔴 TODO: Is file ko internal PDF Viewer mein dikhana hai
-      }
-    });
-  }, []);
-
   // 🔴 UNIVERSAL FILE CATCHER (WhatsApp, File Manager etc.)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    CapacitorApp.addListener('appUrlOpen', async (data) => {
+    const urlListener = CapacitorApp.addListener('appUrlOpen', async (data) => {
       // Agar aayi hui file PDF hai
       if (data.url && (data.url.includes('.pdf') || data.url.startsWith('content://'))) {
         
@@ -172,7 +160,7 @@ const ProUtilityApp = () => {
     });
 
     return () => {
-      CapacitorApp.removeAllListeners('appUrlOpen');
+      urlListener.remove();
     };
   }, []);
   
@@ -368,7 +356,7 @@ const ProUtilityApp = () => {
         }
         
         .tool-card:active {
-           transform: scale(0.98) !important; /* 0.95 se badha kar 0.98 kiya, solid feel ke liye */
+           transform: scale(0.98) !important;
            filter: brightness(0.9) !important;
         }
       `}</style>
@@ -477,13 +465,6 @@ const ProUtilityApp = () => {
             <button onClick={() => setIsPremium(!isPremium)} style={{ background: isPremium ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', border: 'none', padding: '8px 14px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', zIndex: 2 }}><Icons.Crown /> {isPremium ? 'PRO' : 'FREE'}</button>
           </div>
 
-        <div className="page-animate" style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: 'var(--bg-main)', zIndex: 50 }}>
-          <Suspense fallback={<div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color: 'var(--text-main)'}}>Loading Tool...</div>}>
-            {/* ... aapke baaki ke tools wahi rahenge ... */}
-          </Suspense>
-        </div>
-      )} 
-
           <div className="tools-grid">
             {TOOLS[0] && <ToolCard tool={TOOLS[0]} onClick={handleToolClick} />}
             <div className="tools-row">{TOOLS.slice(1, 3).map(tool => <ToolCard key={tool.id} tool={tool} onClick={handleToolClick} />)}</div>
@@ -494,7 +475,7 @@ const ProUtilityApp = () => {
       )}
 
       {selectedTool && (
-        <div style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: 'var(--bg-main)', zIndex: 50 }}>
+        <div className="page-animate" style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: 'var(--bg-main)', zIndex: 50 }}>
           <Suspense fallback={<div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color: 'var(--text-main)'}}>Loading Tool...</div>}>
             
             {selectedTool.id === 'lock' ? <PdfSecurity mode="lock" onBack={goBack} onNotify={triggerHapticAndToast} /> :
