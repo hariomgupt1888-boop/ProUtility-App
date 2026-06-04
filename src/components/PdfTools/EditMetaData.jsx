@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
-import { readFile } from '../../utils/pdfUtils'; // 🔴 Purana save hata diya
-import { Filesystem, Directory } from '@capacitor/filesystem'; // 🔴 Naya Professional Save
+import { readFile } from '../../utils/pdfUtils'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
+import { Capacitor } from '@capacitor/core'; // 🔴 NAYA FIX: Capacitor import kiya
 
 const EditMetadata = ({ onNotify, isPremium }) => {
   // 🔴 STRICT PREMIUM LOCK
@@ -23,7 +24,8 @@ const EditMetadata = ({ onNotify, isPremium }) => {
     );
   }
 
-  const [file, setFile] = useState(null);
+  // 🔴 NAYA FIX: Ab hum file nahi, seedha uska data buffer store karenge!
+  const [pdfBuffer, setPdfBuffer] = useState(null); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
   
@@ -51,14 +53,13 @@ const EditMetadata = ({ onNotify, isPremium }) => {
           creator: pdfDoc.getCreator() || '',
       });
       
-      setFile(uploadedFile);
+      setPdfBuffer(buffer); // 🔴 Buffer save kar liya, ab Android isko delete nahi kar sakta
       setOutputName(uploadedFile.name.replace('.pdf', '') + '_Pro'); 
     } catch (err) { 
       alert('Failed to read file. Ensure it is not encrypted.'); 
     } finally {
-      // 🧹 CLEANUP: Error aaye ya na aaye, loading band karni hai
       setIsProcessing(false); setStatus('');
-      e.target.value = null;
+      e.target.value = null; // Yahan file hatne se bhi buffer safe rahega
     }
   };
 
@@ -66,12 +67,24 @@ const EditMetadata = ({ onNotify, isPremium }) => {
       setMetaInfo(prev => ({ ...prev, [field]: value }));
   };
 
+  // 🔴 Universal Base64 Converter (Sabse Safe Tarika)
+  const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(blob);
+    });
+  };
+
   const runMetadataEditor = async () => {
     if (!outputName.trim()) return alert("Please enter a valid file name!");
+    if (!pdfBuffer) return alert("File data missing. Please upload again!");
 
     setIsProcessing(true); setStatus("Updating Properties...");
     try {
-      const pdfDoc = await PDFDocument.load(await readFile(file));
+      // 🔴 Buffer se load kar rahe hain bina naya file read kiye
+      const pdfDoc = await PDFDocument.load(pdfBuffer);
       
       // Set new metadata
       if (metaInfo.title) pdfDoc.setTitle(metaInfo.title);
@@ -80,33 +93,45 @@ const EditMetadata = ({ onNotify, isPremium }) => {
       if (metaInfo.keywords) pdfDoc.setKeywords(metaInfo.keywords);
       if (metaInfo.creator) pdfDoc.setCreator(metaInfo.creator);
       
-      // 1. Direct Base64 conversion (Fastest)
-      const base64Data = await pdfDoc.saveAsBase64({ dataUri: false });
-      
-      // 2. Android Permission & Direct Save
-      try { await Filesystem.requestPermissions(); } catch (e) { }
-
-      // 🔴 NAYA FIX: Timestamp joda gaya taaki naam overwrite na ho
+      // Convert to standard Blob
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const finalName = `${outputName}_${Date.now()}.pdf`;
 
-      await Filesystem.writeFile({
-        path: finalName,
-        data: base64Data,
-        directory: Directory.Documents,
-        recursive: true
-      });
+      // 🔴 NAYA FIX: 100% Native Safe Save Mode
+      if (Capacitor.isNativePlatform()) {
+          try { await Filesystem.requestPermissions(); } catch (e) { }
+          const base64Data = await blobToBase64(blob);
 
-      if (onNotify) onNotify('✅ Metadata Updated & Saved!', false);
+          await Filesystem.writeFile({
+            path: finalName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true
+          });
+          
+          // Blob pass karna zaroori hai taaki Recent Files mein open ho sake
+          if (onNotify) onNotify('✅ Metadata Updated & Saved!', false, finalName, 'PDF Document', blob);
+      } else {
+          // Web fallback
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = finalName;
+          link.click();
+          URL.revokeObjectURL(url);
+          if (onNotify) onNotify('✅ Metadata Updated & Saved!', false, finalName, 'PDF Document', blob);
+      }
       
-      // 🧹 CLEANUP: Save hone ke baad file screen se hata dein taaki RAM khali ho
-      setFile(null);
+      // 🧹 CLEANUP
+      setPdfBuffer(null);
       setMetaInfo({ title: '', author: '', subject: '', keywords: '', creator: '' });
 
     } catch (e) { 
-        console.error(e);
-        alert('⚠️ Failed to save. Phone settings mein jao aur Storage/Files permission allow karo.'); 
+        console.error("Meta Save Error:", e);
+        // Ab exact error dikhega agar koi hogi
+        alert('⚠️ Error Saving File: ' + (e.message || 'Something went wrong.')); 
     } finally {
-        // 🧹 CLEANUP: Yeh finally block app ko freeze hone se bachata hai
         setIsProcessing(false); 
         setStatus('');
     }
@@ -129,7 +154,8 @@ const EditMetadata = ({ onNotify, isPremium }) => {
 
       <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="application/pdf" onChange={handleUpload} />
 
-      {!file ? (
+      {/* 🔴 YAHAN file ki jagah pdfBuffer check kar rahe hain */}
+      {!pdfBuffer ? (
         <label style={{ border: '2px dashed var(--border-color)', padding: '30px', borderRadius: '15px', cursor: 'pointer', display: 'block', color: 'var(--text-muted)', background: 'var(--bg-input)' }} onClick={() => fileInputRef.current.click()}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}><Icons.Upload /></div>
           <span style={{ fontWeight: '600', fontSize: '14px', display: 'block' }}>Tap to Upload PDF</span>
@@ -170,7 +196,7 @@ const EditMetadata = ({ onNotify, isPremium }) => {
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
              <button onClick={() => {
-                setFile(null); // 🧹 CLEAR MEMORY on Cancel
+                setPdfBuffer(null); // 🧹 CLEAR MEMORY
              }} style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
              
              <button onClick={runMetadataEditor} disabled={isProcessing} style={{ flex: 2, background: '#8b5cf6', color: 'white', padding: '14px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)', cursor: 'pointer' }}>Update Properties</button>

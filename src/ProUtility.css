@@ -1,3 +1,19 @@
+body, html {
+  /* Double-tap to zoom ko permanently disable karta hai */
+  touch-action: manipulation; 
+  
+  /* Text selection aur long-press popup ko rokta hai */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Agar app mein kahin text likhne wala input ya textarea ho, toh use allow karein */
+input, textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
 /* --- LIGHT MODE (Default) --- */
 :root {
   --bg-main: #f8fafc;       /* Poore app ka background */

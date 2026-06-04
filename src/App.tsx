@@ -137,27 +137,67 @@ const ProUtilityApp = () => {
   };
 
   useEffect(() => {
+    // Jab app bahar (WhatsApp/File Manager) se khulegi
+    CapacitorApp.addListener('appUrlOpen', (data) => {
+      if (data.url && (data.url.includes('.pdf') || data.url.startsWith('content://'))) {
+          // Yahan hum WhatsApp ki file pakad lenge
+          alert("✅ WhatsApp File Received: " + data.url);
+          
+          // 🔴 TODO: Is file ko internal PDF Viewer mein dikhana hai
+      }
+    });
+  }, []);
+
+  // 🔴 UNIVERSAL FILE CATCHER (WhatsApp, File Manager etc.)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    CapacitorApp.addListener('appUrlOpen', async (data) => {
+      // Agar aayi hui file PDF hai
+      if (data.url && (data.url.includes('.pdf') || data.url.startsWith('content://'))) {
+        
+        triggerHapticAndToast("Importing PDF from external app...");
+        
+        try {
+          // File ko turant Native Fast Engine mein khol do
+          await FileOpener.open({
+            filePath: data.url,
+            contentType: 'application/pdf'
+          });
+        } catch (error) {
+          console.error("External Open Error:", error);
+          triggerHapticAndToast("Could not read external file.");
+        }
+      }
+    });
+
+    return () => {
+      CapacitorApp.removeAllListeners('appUrlOpen');
+    };
+  }, []);
+  
+  useEffect(() => {
     fetchRecentFiles();
   }, [activeModal]);
 
-  // 🔴 1. STARTUP PERMISSIONS & SPLASH SCREEN FIX (Permission Guard)
+  // 🔴 STARTUP PERMISSIONS (With Timer & Error Alert)
   useEffect(() => {
     const initApp = async () => {
       if (Capacitor.isNativePlatform()) {
         await SplashScreen.hide();
         
-        // App khulte hi Camera aur Storage ki permission maangna
-        try {
-          // 1. Storage Permission
-          await Filesystem.requestPermissions();
-          
-          // 2. Camera Permission
-          await Camera.requestPermissions();
-          
-          console.log("Permissions granted by user!");
-        } catch (e) {
-          console.log("Permission Error", e);
-        }
+        // 1 second ka delay taaki Android ready ho jaye
+        setTimeout(async () => {
+          try {
+            // Camera Permission
+            await Camera.requestPermissions();
+            // Storage Permission
+            await Filesystem.requestPermissions();
+          } catch (e) {
+            // Agar OS block karega toh humein screen par error dikh jayega
+            alert("Permission Blocked by Android: " + JSON.stringify(e));
+          }
+        }, 1000);
       }
     };
     initApp();
@@ -307,17 +347,28 @@ const ProUtilityApp = () => {
         </div>
       )}
 
-      {/* 🔴 Mobile Touch Card Smoothness CSS */}
+      {/* 🔴 Mobile Touch Card Smoothness & Page Transition CSS */}
       <style>{`
         @keyframes toastFadeInUp { 0% { opacity: 0; transform: translate(-50%, 20px); } 100% { opacity: 1; transform: translate(-50%, 0); } }
         
+        /* Naya Smooth Page Load Animation */
+        @keyframes pageSlideUp { 
+            0% { opacity: 0; transform: translateY(15px); } 
+            100% { opacity: 1; transform: translateY(0); } 
+        }
+
+        .page-animate {
+            animation: pageSlideUp 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+        
         .tool-card {
-           transition: transform 0.15s ease-out, filter 0.15s ease-out !important;
+           transition: transform 0.1s ease-out, filter 0.1s ease-out !important;
            -webkit-tap-highlight-color: transparent !important; 
            cursor: pointer;
         }
+        
         .tool-card:active {
-           transform: scale(0.95) !important;
+           transform: scale(0.98) !important; /* 0.95 se badha kar 0.98 kiya, solid feel ke liye */
            filter: brightness(0.9) !important;
         }
       `}</style>
@@ -425,6 +476,13 @@ const ProUtilityApp = () => {
             </div>
             <button onClick={() => setIsPremium(!isPremium)} style={{ background: isPremium ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'var(--bg-input)', color: isPremium ? '#000' : 'var(--text-main)', border: 'none', padding: '8px 14px', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', zIndex: 2 }}><Icons.Crown /> {isPremium ? 'PRO' : 'FREE'}</button>
           </div>
+
+        <div className="page-animate" style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0, backgroundColor: 'var(--bg-main)', zIndex: 50 }}>
+          <Suspense fallback={<div style={{display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color: 'var(--text-main)'}}>Loading Tool...</div>}>
+            {/* ... aapke baaki ke tools wahi rahenge ... */}
+          </Suspense>
+        </div>
+      )} 
 
           <div className="tools-grid">
             {TOOLS[0] && <ToolCard tool={TOOLS[0]} onClick={handleToolClick} />}

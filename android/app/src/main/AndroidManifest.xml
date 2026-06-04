@@ -2,8 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <uses-permission android:name="android.permission.CAMERA" />
     
-    <!-- Yahan se maxSdkVersion hata diya gaya hai taaki har phone me permission maange -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -16,7 +18,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:requestLegacyExternalStorage="true" 
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true">
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
@@ -35,15 +39,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <intent-filter>
+           <!-- 🔴 NAYA UNIVERSAL INTENT FILTER (WhatsApp, Telegram, Files) -->
+            <intent-filter android:label="ProUtility" android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="file" />
                 <data android:scheme="content" />
                 <data android:mimeType="application/pdf" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.pdf" />
             </intent-filter>
-        </activity>
+                   </activity>
 
         <provider
             android:name="androidx.core.content.FileProvider"
