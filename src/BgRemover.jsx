@@ -13,8 +13,18 @@ const Icons = {
   Move: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="19 9 22 12 19 15"/><polyline points="9 19 12 22 15 19"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>,
   Undo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>,
-  Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>
+  Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
+  GameController: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="15" y2="12"/></svg>
 };
+
+// 🎮 GAME STYLE ROTATING TIPS
+const GAME_TIPS = [
+  "Tip: Best quality AI model takes a moment to load, but delivers perfect edges.",
+  "Tip: Once resources are downloaded, processing will be lightning fast.",
+  "Tip: We process images entirely on your device for 100% privacy.",
+  "Tip: High contrast backgrounds are easier for the AI to detect.",
+  "Tip: ProUtility never uploads your data to any external server."
+];
 
 const BgRemover = ({ onBack, onNotify }) => {
   const [image, setImage] = useState(null);
@@ -43,10 +53,24 @@ const BgRemover = ({ onBack, onNotify }) => {
   const lastPos = useRef({ x: 0, y: 0 });
 
   const fileInputRef = useRef(null);
+  
+  // Rotating Tips State
+  const [tipIndex, setTipIndex] = useState(0);
 
   useEffect(() => {
     if (!image && fileInputRef.current) fileInputRef.current.click();
   }, []);
+
+  // 🎮 Change Tips Every 3 Seconds during Processing
+  useEffect(() => {
+    let interval;
+    if (isProcessing) {
+      interval = setInterval(() => {
+        setTipIndex((prev) => (prev + 1) % GAME_TIPS.length);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -55,7 +79,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       img.crossOrigin = "anonymous"; 
       
       img.onload = () => {
-        const MAX_WIDTH = 800;
+        const MAX_WIDTH = 1000; // High-Res limit
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
         
         const canvas = document.createElement('canvas');
@@ -64,12 +88,12 @@ const BgRemover = ({ onBack, onNotify }) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        const url = canvas.toDataURL('image/jpeg', 0.8);
+        const url = canvas.toDataURL('image/jpeg', 0.9);
         setImage(url);
         
         canvas.toBlob((blob) => {
             setImageBlob(blob);
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.9);
         
         originalImgRef.current = new Image();
         originalImgRef.current.crossOrigin = "anonymous";
@@ -81,7 +105,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔴 SUPER FAST AI ENGINE FIX
+  // 🔴 GAME STYLE NATIVE ASSET LOADER (Premium Quality Model)
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
@@ -89,48 +113,48 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const config = {
-        // 🔴 Fix applied exactly from your screenshot!
-        publicPath: "https://static.imgly.com/@imgly/background-removal/assets/", 
-        debug: true,
-        // (Removed device: CPU so it can use GPU for hyper-fast results)
+        // Unpkg CDN acts as a robust asset delivery network (Bypasses AdBlockers)
+        publicPath: "https://unpkg.com/@imgly/background-removal/assets/", 
+        model: 'medium', // Using 'medium' ensures the BEST quality edge detection
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
-            setDownloadProgress(percent);
+            // Limit to 99% until fully processed to keep user engaged
+            setDownloadProgress(percent > 99 ? 99 : percent);
         }
       };
       
       const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
-      setProcessedImage(url);
-      setEditMode('move'); 
+      setDownloadProgress(100); // 100% when completely done
       
-      historyRef.current = [];
-      redoRef.current = [];
-      setHistoryCount(0);
+      setTimeout(() => {
+          setProcessedImage(url);
+          setEditMode('move'); 
+          setIsProcessing(false);
+          historyRef.current = [];
+          redoRef.current = [];
+          setHistoryCount(0);
+      }, 500); // Small delay for smooth transition
       
     } catch (e) {
       console.error("AI Error:", e);
-      // 🔴 Show exactly what failed!
-      alert("⚠️ AI Engine Error: " + (e.message || "Failed to load model. Please check internet connection."));
-      
+      alert("⚠️ Download Interrupted: Please check your internet connection and try again.");
       if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual Mode.");
       setProcessedImage(image); 
       setEditMode('erase'); 
       historyRef.current = [];
       redoRef.current = [];
       setHistoryCount(0);
-    } finally {
       setIsProcessing(false);
     }
   };
 
   // --- Dynamic Progress Text ---
   const getProgressText = () => {
-    if (downloadProgress < 20) return "Warming up AI Engine... 🚀";
-    if (downloadProgress < 50) return "Analyzing Image Pixels... 🔍";
-    if (downloadProgress < 85) return "Separating Foreground... ✂️";
-    if (downloadProgress < 100) return "Adding Final Polish... ✨";
-    return "Almost Done... 🪄";
+    if (downloadProgress < 15) return "Connecting to Server...";
+    if (downloadProgress < 85) return "Downloading AI Assets...";
+    if (downloadProgress < 100) return "Compiling Native Engine...";
+    return "Magic Applied! ✨";
   };
 
   useEffect(() => {
@@ -297,7 +321,6 @@ const BgRemover = ({ onBack, onNotify }) => {
          if(onNotify) onNotify("✅ Downloaded!", false, fileName, 'Image Cutout', blob);
       }
     } catch (error) {
-      console.error("Save Error:", error);
       alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
     } finally {
         setIsSaving(false);
@@ -327,7 +350,6 @@ const BgRemover = ({ onBack, onNotify }) => {
                 alert("⚠️ Internet Required for Free Users.");
               }
             }
-
         } catch (e) {
             alert("Failed to process image.");
         }
@@ -353,37 +375,50 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   return (
     <div style={S.wrapper}>
-      {/* 🔴 COOL CSS ANIMATIONS FOR UI */}
+      {/* 🎮 COOL GAME-STYLE ANIMATIONS */}
       <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        @keyframes pulseGlow { 0% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } 50% { box-shadow: 0 0 30px rgba(236,72,153,0.6); } 100% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } }
-        @keyframes floatText { 0% { transform: translateY(0px); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0px); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } 50% { box-shadow: 0 0 30px rgba(59,130,246,0.8); } 100% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } }
+        @keyframes floatText { 0% { transform: translateY(0px); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } 100% { transform: translateY(0px); opacity: 0.8; } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .cool-loader { animation: pulseGlow 2s infinite alternate; }
+        .tip-text { animation: slideIn 0.5s ease-out forwards; }
       `}</style>
       
-      {/* 🔴 BEAUTIFUL DYNAMIC PROGRESS UI */}
+      {/* 🎮 BEAUTIFUL GAME-STYLE DOWNLOADING UI */}
       {(isProcessing || isSaving) && (
-         <div style={{position:'absolute', zIndex:50, inset:0, background: image ? `url(${image})` : 'rgba(15,23,42,0.95)', backgroundSize: 'cover', backgroundPosition: 'center'}}>
-            {/* Blurry Overlay for Premium Feel */}
-            <div style={{position:'absolute', inset:0, background:'rgba(15,23,42,0.85)', backdropFilter:'blur(12px)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: '20px', textAlign: 'center'}}>
+         <div style={{position:'absolute', zIndex:50, inset:0, background: image ? `url(${image})` : '#0f172a', backgroundSize: 'cover', backgroundPosition: 'center'}}>
+            <div style={{position:'absolute', inset:0, background:'rgba(15,23,42,0.90)', backdropFilter:'blur(15px)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: '20px', textAlign: 'center'}}>
              
              {isProcessing ? (
-               <div style={{display:'flex', flexDirection:'column', alignItems:'center', background:'rgba(30,41,59,0.7)', padding:'40px 30px', borderRadius:'30px', border:'1px solid rgba(255,255,255,0.1)', boxShadow:'0 20px 40px rgba(0,0,0,0.5)'}}>
-                 <div style={{position:'relative', width:'80px', height:'80px', marginBottom:'20px'}}>
+               <div style={{display:'flex', flexDirection:'column', alignItems:'center', background:'linear-gradient(180deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9))', padding:'40px 30px', borderRadius:'24px', border:'1px solid rgba(59,130,246,0.3)', boxShadow:'0 25px 50px rgba(0,0,0,0.8)'}}>
+                 
+                 {/* Top Icon */}
+                 <div style={{marginBottom: '20px', opacity: 0.8}}>
+                    <Icons.GameController />
+                 </div>
+
+                 {/* Percentage Circle */}
+                 <div style={{position:'relative', width:'90px', height:'90px', marginBottom:'25px'}}>
                     <div style={{position:'absolute', inset:0, border:'4px solid #334155', borderRadius:'50%'}}></div>
-                    <div className="cool-loader" style={{position:'absolute', inset:0, border:'4px solid transparent', borderTopColor:'#3b82f6', borderRightColor:'#ec4899', borderRadius:'50%', animation:'spin 1s linear infinite'}}></div>
-                    <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', fontSize:'16px', color:'white'}}>{downloadProgress}%</div>
+                    <div className="cool-loader" style={{position:'absolute', inset:0, border:'4px solid transparent', borderTopColor:'#3b82f6', borderRightColor:'#3b82f6', borderRadius:'50%', animation:'spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite'}}></div>
+                    <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'900', fontSize:'22px', color:'white', textShadow: '0 2px 10px rgba(59,130,246,0.5)'}}>{downloadProgress}%</div>
                  </div>
                  
-                 <h2 style={{color: '#f8fafc', margin: '0 0 10px 0', fontSize: '20px', animation:'floatText 3s ease-in-out infinite'}}>{getProgressText()}</h2>
+                 {/* Main Status Text */}
+                 <h2 style={{color: '#f8fafc', margin: '0 0 15px 0', fontSize: '18px', animation:'floatText 2s ease-in-out infinite', letterSpacing: '1px'}}>{getProgressText()}</h2>
                  
-                 <div style={{width: '100%', minWidth: '240px', background: '#0f172a', borderRadius: '10px', height: '8px', overflow: 'hidden', marginTop:'15px', border:'1px solid rgba(255,255,255,0.05)'}}>
-                     <div style={{width: `${downloadProgress}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #ec4899)', transition: 'width 0.4s ease-out', borderRadius: '10px'}}></div>
+                 {/* Progress Bar Line */}
+                 <div style={{width: '100%', minWidth: '260px', background: '#0f172a', borderRadius: '10px', height: '6px', overflow: 'hidden', border:'1px solid rgba(255,255,255,0.05)'}}>
+                     <div style={{width: `${downloadProgress}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #60a5fa)', transition: 'width 0.3s ease-out', borderRadius: '10px', boxShadow: '0 0 10px #3b82f6'}}></div>
                  </div>
                  
-                 <p style={{fontSize:'12px', color:'#94a3b8', marginTop:'20px', maxWidth: '220px', lineHeight:'1.5'}}>
-                   High-Quality AI Model<br/>Downloading components once.
-                 </p>
+                 {/* 🎮 Rotating Tips Area */}
+                 <div style={{marginTop:'30px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                    <p key={tipIndex} className="tip-text" style={{fontSize:'12px', color:'#94a3b8', maxWidth: '240px', lineHeight:'1.6', fontStyle: 'italic', margin: 0}}>
+                      {GAME_TIPS[tipIndex]}
+                    </p>
+                 </div>
                </div>
              ) : (
                <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
@@ -400,7 +435,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       <div style={S.header}>
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
             <button onClick={onBack} style={{background:'none', border:'none', color:'white', cursor:'pointer'}}><Icons.Back/></button>
-            <span style={{fontWeight:'bold', fontSize:'16px'}}>BG Remover</span>
+            <span style={{fontWeight:'bold', fontSize:'16px'}}>Pro Cutout</span>
         </div>
         
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
@@ -475,7 +510,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                      style={{background: image ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : '#334155', color:'white', border:'none', padding:'16px 40px', borderRadius:'30px', fontWeight:'bold', fontSize:'16px', display:'flex', alignItems:'center', gap:'10px', boxShadow: image ? '0 10px 25px rgba(37,99,235,0.4)' : 'none', cursor: image ? 'pointer' : 'default', transition: '0.3s'}}
                  >
                      {isProcessing ? null : <Icons.Check />} 
-                     {isProcessing ? 'Processing...' : 'Start Magic Cutout'}
+                     {isProcessing ? 'Processing...' : 'Download Assets & Remove BG'}
                  </button>
              </div>
          )}
