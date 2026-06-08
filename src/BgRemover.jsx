@@ -81,7 +81,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔴 YAHAN AAPKA AI DOWNLOAD FIX HAI
+  // 🔴 SUPER FAST AI ENGINE FIX
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
@@ -89,10 +89,10 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const config = {
-        // 🔴 Path ko "https" force kiya hai taaki Capacitor Android me block na ho
-        publicPath: "https://static.imgly.com/@imgly/background-removal/1.4.3/dist/", 
-        model: 'small', 
-        device: 'cpu', 
+        // 🔴 Fix applied exactly from your screenshot!
+        publicPath: "https://static.imgly.com/@imgly/background-removal/assets/", 
+        debug: true,
+        // (Removed device: CPU so it can use GPU for hyper-fast results)
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             setDownloadProgress(percent);
@@ -110,8 +110,10 @@ const BgRemover = ({ onBack, onNotify }) => {
       
     } catch (e) {
       console.error("AI Error:", e);
-      if (onNotify) onNotify("⚠️ AI couldn't detect subject. Switched to Manual Mode.");
+      // 🔴 Show exactly what failed!
+      alert("⚠️ AI Engine Error: " + (e.message || "Failed to load model. Please check internet connection."));
       
+      if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual Mode.");
       setProcessedImage(image); 
       setEditMode('erase'); 
       historyRef.current = [];
@@ -120,6 +122,15 @@ const BgRemover = ({ onBack, onNotify }) => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // --- Dynamic Progress Text ---
+  const getProgressText = () => {
+    if (downloadProgress < 20) return "Warming up AI Engine... 🚀";
+    if (downloadProgress < 50) return "Analyzing Image Pixels... 🔍";
+    if (downloadProgress < 85) return "Separating Foreground... ✂️";
+    if (downloadProgress < 100) return "Adding Final Polish... ✨";
+    return "Almost Done... 🪄";
   };
 
   useEffect(() => {
@@ -277,18 +288,18 @@ const BgRemover = ({ onBack, onNotify }) => {
            recursive: true
          });
          
-         if(onNotify) onNotify("✅ Saved successfully to Documents folder!", false);
+         if(onNotify) onNotify("✅ Saved successfully to Documents folder!", false, fileName, 'Image Cutout', blob);
       } else {
          const link = document.createElement('a');
          link.download = fileName;
          link.href = dataUrl;
          link.click();
+         if(onNotify) onNotify("✅ Downloaded!", false, fileName, 'Image Cutout', blob);
       }
     } catch (error) {
       console.error("Save Error:", error);
       alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
     } finally {
-        // 🧹 CLEANUP (Jhaadu)
         setIsSaving(false);
         setSaveStatus("");
         setImage(null);
@@ -305,7 +316,6 @@ const BgRemover = ({ onBack, onNotify }) => {
             const blob = await response.blob();
             const finalName = `ProUtility_Cutout_${Date.now()}.png`;
 
-            // 👑 PREMIUM & AD GATE LOGIC
             if (isPremium) {
               await executeDownload(dataUrl, finalName, blob);
             } else {
@@ -331,10 +341,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     checkerboard: { position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)', backgroundSize: '20px 20px' },
     container: { transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s', position: 'relative' },
     ghostImg: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: editMode === 'restore' ? 0.4 : 0, transition: 'opacity 0.3s', pointerEvents: 'none' },
-    
-    // 🔴 FIX FOR AD MOB BANNER
     bottomBar: { background: '#1e293b', borderTop: '1px solid #334155', paddingBottom: '90px' }, 
-    
     actionRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 20px', background: '#0f172a', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' },
     undoGroup: { display: 'flex', gap: '20px' },
     sliderWrapper: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '15px' },
@@ -346,37 +353,47 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   return (
     <div style={S.wrapper}>
-      <style>{`.spinner { animation: spin 1s linear infinite; } @keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+      {/* 🔴 COOL CSS ANIMATIONS FOR UI */}
+      <style>{`
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } 50% { box-shadow: 0 0 30px rgba(236,72,153,0.6); } 100% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } }
+        @keyframes floatText { 0% { transform: translateY(0px); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0px); } }
+        .cool-loader { animation: pulseGlow 2s infinite alternate; }
+      `}</style>
       
-      {/* 🔴 NAYA BEAUTIFUL PROGRESS UI */}
+      {/* 🔴 BEAUTIFUL DYNAMIC PROGRESS UI */}
       {(isProcessing || isSaving) && (
-         <div style={{position:'absolute', zIndex:50, inset:0, background:'rgba(15,23,42,0.95)', backdropFilter:'blur(8px)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: '20px', textAlign: 'center'}}>
+         <div style={{position:'absolute', zIndex:50, inset:0, background: image ? `url(${image})` : 'rgba(15,23,42,0.95)', backgroundSize: 'cover', backgroundPosition: 'center'}}>
+            {/* Blurry Overlay for Premium Feel */}
+            <div style={{position:'absolute', inset:0, background:'rgba(15,23,42,0.85)', backdropFilter:'blur(12px)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: '20px', textAlign: 'center'}}>
              
              {isProcessing ? (
-               <>
-                 <h2 style={{color: '#f8fafc', marginBottom: '30px', fontSize: '22px'}}>AI Magic in Progress</h2>
-                 {/* Premium Progress Bar */}
-                 <div style={{width: '100%', maxWidth: '280px', background: '#334155', borderRadius: '20px', height: '14px', overflow: 'hidden', boxShadow: '0 0 20px rgba(59, 130, 246, 0.2)'}}>
-                     <div style={{width: `${downloadProgress}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #ec4899)', transition: 'width 0.3s ease', borderRadius: '20px'}}></div>
+               <div style={{display:'flex', flexDirection:'column', alignItems:'center', background:'rgba(30,41,59,0.7)', padding:'40px 30px', borderRadius:'30px', border:'1px solid rgba(255,255,255,0.1)', boxShadow:'0 20px 40px rgba(0,0,0,0.5)'}}>
+                 <div style={{position:'relative', width:'80px', height:'80px', marginBottom:'20px'}}>
+                    <div style={{position:'absolute', inset:0, border:'4px solid #334155', borderRadius:'50%'}}></div>
+                    <div className="cool-loader" style={{position:'absolute', inset:0, border:'4px solid transparent', borderTopColor:'#3b82f6', borderRightColor:'#ec4899', borderRadius:'50%', animation:'spin 1s linear infinite'}}></div>
+                    <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold', fontSize:'16px', color:'white'}}>{downloadProgress}%</div>
                  </div>
                  
-                 <div style={{display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '280px', marginTop: '10px'}}>
-                    <span style={{fontSize:'14px', color:'#94a3b8', fontWeight: 'bold'}}>{downloadProgress < 100 ? 'Downloading Model...' : 'Applying AI...'}</span>
-                    <span style={{fontSize:'14px', color:'#3b82f6', fontWeight: 'bold'}}>{downloadProgress}%</span>
+                 <h2 style={{color: '#f8fafc', margin: '0 0 10px 0', fontSize: '20px', animation:'floatText 3s ease-in-out infinite'}}>{getProgressText()}</h2>
+                 
+                 <div style={{width: '100%', minWidth: '240px', background: '#0f172a', borderRadius: '10px', height: '8px', overflow: 'hidden', marginTop:'15px', border:'1px solid rgba(255,255,255,0.05)'}}>
+                     <div style={{width: `${downloadProgress}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #ec4899)', transition: 'width 0.4s ease-out', borderRadius: '10px'}}></div>
                  </div>
-
-                 {downloadProgress < 100 && (
-                   <p style={{fontSize:'12px', color:'#64748b', marginTop:'20px', maxWidth: '250px'}}>
-                     Downloading AI components (once). Please ensure your internet is active.
-                   </p>
-                 )}
-               </>
+                 
+                 <p style={{fontSize:'12px', color:'#94a3b8', marginTop:'20px', maxWidth: '220px', lineHeight:'1.5'}}>
+                   High-Quality AI Model<br/>Downloading components once.
+                 </p>
+               </div>
              ) : (
-               <>
-                 <div style={{width: '45px', height: '45px', border: '4px solid #3b82f6', borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
-                 <span style={{marginTop:'20px', fontWeight:'bold', fontSize:'18px', color:'#f8fafc'}}>{saveStatus}</span>
-               </>
+               <div style={{display:'flex', flexDirection:'column', alignItems:'center'}}>
+                 <div style={{width: '60px', height: '60px', background:'rgba(37,99,235,0.2)', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:'50%', marginBottom:'20px'}} className="cool-loader">
+                    <div style={{width: '40px', height: '40px', border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
+                 </div>
+                 <span style={{fontWeight:'bold', fontSize:'22px', color:'#f8fafc', letterSpacing:'1px'}}>{saveStatus}</span>
+               </div>
              )}
+            </div>
          </div>
       )}
 
@@ -392,7 +409,7 @@ const BgRemover = ({ onBack, onNotify }) => {
             </button>
 
             {processedImage && (
-                <button onClick={handleSave} disabled={isSaving} style={{background:'#2563eb', padding:'6px 16px', borderRadius:'20px', border:'none', color:'white', fontSize:'14px', fontWeight:'bold', cursor:'pointer'}}>
+                <button onClick={handleSave} disabled={isSaving} style={{background:'#2563eb', padding:'6px 16px', borderRadius:'20px', border:'none', color:'white', fontSize:'14px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 10px rgba(37,99,235,0.4)'}}>
                     Save
                 </button>
             )}
@@ -403,9 +420,9 @@ const BgRemover = ({ onBack, onNotify }) => {
          <div style={S.checkerboard}></div>
          
          {!image ? (
-            <div onClick={() => fileInputRef.current.click()} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer'}}>
+            <div onClick={() => fileInputRef.current.click()} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', transition:'0.3s', boxShadow:'0 10px 30px rgba(0,0,0,0.3)'}}>
                <Icons.Upload />
-               <p style={{color:'#f8fafc', fontWeight:'bold', marginTop:'15px', fontSize:'16px'}}>Tap to Upload</p>
+               <p style={{color:'#f8fafc', fontWeight:'bold', marginTop:'15px', fontSize:'16px'}}>Tap to Upload Image</p>
                <input ref={fileInputRef} type="file" style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />
             </div>
          ) : (
@@ -415,7 +432,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                       <img src={image} style={S.ghostImg} alt="ref" />
                       <canvas 
                           ref={canvasRef} 
-                          style={{ maxWidth: '95vw', maxHeight: '75vh', touchAction: 'none' }}
+                          style={{ maxWidth: '95vw', maxHeight: '75vh', touchAction: 'none', filter:'drop-shadow(0px 10px 20px rgba(0,0,0,0.5))' }}
                           onMouseDown={resetPath} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp}
                           onTouchStart={resetPath} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}
                       />
@@ -455,10 +472,10 @@ const BgRemover = ({ onBack, onNotify }) => {
                  <button 
                      onClick={runAiRemoval} 
                      disabled={!image || isProcessing}
-                     style={{background: image ? '#2563eb' : '#334155', color:'white', border:'none', padding:'16px 40px', borderRadius:'30px', fontWeight:'bold', fontSize:'16px', display:'flex', alignItems:'center', gap:'10px', boxShadow: image ? '0 4px 15px rgba(37,99,235,0.4)' : 'none'}}
+                     style={{background: image ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : '#334155', color:'white', border:'none', padding:'16px 40px', borderRadius:'30px', fontWeight:'bold', fontSize:'16px', display:'flex', alignItems:'center', gap:'10px', boxShadow: image ? '0 10px 25px rgba(37,99,235,0.4)' : 'none', cursor: image ? 'pointer' : 'default', transition: '0.3s'}}
                  >
                      {isProcessing ? null : <Icons.Check />} 
-                     {isProcessing ? 'Processing AI...' : 'Start Cutout'}
+                     {isProcessing ? 'Processing...' : 'Start Magic Cutout'}
                  </button>
              </div>
          )}

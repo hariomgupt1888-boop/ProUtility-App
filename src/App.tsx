@@ -456,8 +456,10 @@ const ProUtilityApp = () => {
 
       {!selectedTool && (
         <div className="app-content" style={{ paddingBottom: '70px' }}>
-          <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', marginBottom: '10px', minHeight: '65px' }}>
+          {/* 🔴 NAYA FIX: marginTop: '35px' joda gaya taaki UI status bar ke neeche aa jaye */}
+          <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', marginTop: '35px', marginBottom: '10px', minHeight: '65px' }}>
             <button onClick={() => setIsSidebarOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', padding: '5px', zIndex: 2 }}><Icons.Menu /></button>
+            {/* ... baaki ka code same rahega ... */}
             <div style={{ position: 'absolute', left: 0, right: 0, textAlign: 'center', zIndex: 1, pointerEvents: 'none' }}>
               <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '800', color: 'var(--text-main)' }}>Pro<span style={{ color: '#3b82f6' }}>Utility</span></h1>
               <p style={{ margin: '2px 0 0 0', fontSize: '10px', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>The Ultimate Toolkit</p>

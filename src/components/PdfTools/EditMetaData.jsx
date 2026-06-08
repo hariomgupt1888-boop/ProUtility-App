@@ -3,7 +3,7 @@ import { PDFDocument } from 'pdf-lib';
 import { Icons } from '../Icons'; 
 import { readFile } from '../../utils/pdfUtils'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
-import { Capacitor } from '@capacitor/core'; // 🔴 NAYA FIX: Capacitor import kiya
+import { Capacitor } from '@capacitor/core'; 
 
 const EditMetadata = ({ onNotify, isPremium }) => {
   // 🔴 STRICT PREMIUM LOCK
@@ -24,7 +24,6 @@ const EditMetadata = ({ onNotify, isPremium }) => {
     );
   }
 
-  // 🔴 NAYA FIX: Ab hum file nahi, seedha uska data buffer store karenge!
   const [pdfBuffer, setPdfBuffer] = useState(null); 
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState('');
@@ -49,17 +48,18 @@ const EditMetadata = ({ onNotify, isPremium }) => {
           title: pdfDoc.getTitle() || '',
           author: pdfDoc.getAuthor() || '',
           subject: pdfDoc.getSubject() || '',
-          keywords: pdfDoc.getKeywords() || '',
+          // Agar PDF mein pehle se keywords (Array) hain, toh unhe comma se jod kar string bana lenge
+          keywords: pdfDoc.getKeywords() ? pdfDoc.getKeywords().join(', ') : '',
           creator: pdfDoc.getCreator() || '',
       });
       
-      setPdfBuffer(buffer); // 🔴 Buffer save kar liya, ab Android isko delete nahi kar sakta
+      setPdfBuffer(buffer); 
       setOutputName(uploadedFile.name.replace('.pdf', '') + '_Pro'); 
     } catch (err) { 
       alert('Failed to read file. Ensure it is not encrypted.'); 
     } finally {
       setIsProcessing(false); setStatus('');
-      e.target.value = null; // Yahan file hatne se bhi buffer safe rahega
+      e.target.value = null; 
     }
   };
 
@@ -67,7 +67,7 @@ const EditMetadata = ({ onNotify, isPremium }) => {
       setMetaInfo(prev => ({ ...prev, [field]: value }));
   };
 
-  // 🔴 Universal Base64 Converter (Sabse Safe Tarika)
+  // 🔴 Universal Base64 Converter
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -83,14 +83,19 @@ const EditMetadata = ({ onNotify, isPremium }) => {
 
     setIsProcessing(true); setStatus("Updating Properties...");
     try {
-      // 🔴 Buffer se load kar rahe hain bina naya file read kiye
       const pdfDoc = await PDFDocument.load(pdfBuffer);
       
       // Set new metadata
       if (metaInfo.title) pdfDoc.setTitle(metaInfo.title);
       if (metaInfo.author) pdfDoc.setAuthor(metaInfo.author);
       if (metaInfo.subject) pdfDoc.setSubject(metaInfo.subject);
-      if (metaInfo.keywords) pdfDoc.setKeywords(metaInfo.keywords);
+      
+      // 🔴 NAYA FIX: Keywords String ko Array mein badal diya gaya hai!
+      if (metaInfo.keywords) {
+          const keywordArray = metaInfo.keywords.split(',').map(k => k.trim()).filter(k => k !== '');
+          pdfDoc.setKeywords(keywordArray);
+      }
+      
       if (metaInfo.creator) pdfDoc.setCreator(metaInfo.creator);
       
       // Convert to standard Blob
@@ -98,7 +103,7 @@ const EditMetadata = ({ onNotify, isPremium }) => {
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const finalName = `${outputName}_${Date.now()}.pdf`;
 
-      // 🔴 NAYA FIX: 100% Native Safe Save Mode
+      // 🔴 100% Native Safe Save Mode
       if (Capacitor.isNativePlatform()) {
           try { await Filesystem.requestPermissions(); } catch (e) { }
           const base64Data = await blobToBase64(blob);
@@ -110,7 +115,6 @@ const EditMetadata = ({ onNotify, isPremium }) => {
             recursive: true
           });
           
-          // Blob pass karna zaroori hai taaki Recent Files mein open ho sake
           if (onNotify) onNotify('✅ Metadata Updated & Saved!', false, finalName, 'PDF Document', blob);
       } else {
           // Web fallback
@@ -129,7 +133,6 @@ const EditMetadata = ({ onNotify, isPremium }) => {
 
     } catch (e) { 
         console.error("Meta Save Error:", e);
-        // Ab exact error dikhega agar koi hogi
         alert('⚠️ Error Saving File: ' + (e.message || 'Something went wrong.')); 
     } finally {
         setIsProcessing(false); 
@@ -154,7 +157,6 @@ const EditMetadata = ({ onNotify, isPremium }) => {
 
       <input type="file" ref={fileInputRef} style={{ display: 'none' }} accept="application/pdf" onChange={handleUpload} />
 
-      {/* 🔴 YAHAN file ki jagah pdfBuffer check kar rahe hain */}
       {!pdfBuffer ? (
         <label style={{ border: '2px dashed var(--border-color)', padding: '30px', borderRadius: '15px', cursor: 'pointer', display: 'block', color: 'var(--text-muted)', background: 'var(--bg-input)' }} onClick={() => fileInputRef.current.click()}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}><Icons.Upload /></div>
