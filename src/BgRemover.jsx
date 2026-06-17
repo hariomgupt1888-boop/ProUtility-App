@@ -113,8 +113,8 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const config = {
-        // Unpkg CDN acts as a robust asset delivery network (Bypasses AdBlockers)
-        publicPath: "https://unpkg.com/@imgly/background-removal/assets/", 
+        // Bhai, yahan aapka apna personal GitHub link lag gaya hai!
+        publicPath: "https://hariomgupt1888-boop.github.io/ai-assets/", 
         model: 'medium', // Using 'medium' ensures the BEST quality edge detection
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
