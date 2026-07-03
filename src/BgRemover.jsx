@@ -93,6 +93,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   // 🔥 100% OFFLINE ENGINE LOGIC
+  // 🔥 100% OFFLINE ENGINE LOGIC
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
@@ -101,15 +102,17 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const config = {
-        // Seedha locally downloaded assets folder ko point kar raha hai
-        publicPath: "ai-assets/", 
-        model: 'small', // Ensure small 8MB model is used
+        // 👇 BAS YAHI EK LINE BADALNI HAI 👇
+        // window.location.origin app ka poora address nikal kar jod dega
+        publicPath: window.location.origin + "/ai-assets/", 
+        
+        model: 'small', 
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             setDownloadProgress(percent > 99 ? 99 : percent);
         }
       };
-      
+          
       const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
       setDownloadProgress(100); 
