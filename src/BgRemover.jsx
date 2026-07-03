@@ -17,9 +17,9 @@ const Icons = {
 };
 
 const GAME_TIPS = [
-  "Tip: Offline AI Engine is initializing...",
-  "Tip: We process images entirely on your device for 100% privacy.",
-  "Tip: Lightning fast background removal loaded.",
+  "Tip: Loading lightning fast 8MB AI engine...",
+  "Tip: Best quality edges are being calculated.",
+  "Tip: We process images for 100% privacy.",
   "Tip: ProUtility never uploads your data to any server."
 ];
 
@@ -92,27 +92,22 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔥 100% OFFLINE ENGINE LOGIC
-  // 🔥 100% OFFLINE ENGINE LOGIC
+  // 🔥 THE ULTIMATE 8MB FIX
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
-    setSaveStatus("Starting Offline Engine...");
+    setSaveStatus("Connecting to Engine...");
     
     try {
       const config = {
-        // 👇 BAS YAHI EK LINE BADALNI HAI 👇
-        // window.location.origin app ka poora address nikal kar jod dega
-        publicPath: window.location.origin + "/ai-assets/", 
-        
-        model: 'small', 
+        model: 'small', // Yeh line sab problems khatam kar degi! Sirf 8MB ki file turant aayegi
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             setDownloadProgress(percent > 99 ? 99 : percent);
         }
       };
-          
+      
       const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
       setDownloadProgress(100); 
@@ -129,8 +124,8 @@ const BgRemover = ({ onBack, onNotify }) => {
       
     } catch (e) {
       console.error("AI Error:", e);
-      alert("⚠️ Engine Error: " + e.message);
-      if (onNotify) onNotify("⚠️ AI couldn't complete.");
+      alert("⚠️ Request Failed: Please ensure your internet is on for the quick 8MB setup.");
+      if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual.");
       setProcessedImage(image); 
       setEditMode('erase'); 
       setIsProcessing(false);
@@ -140,7 +135,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const getProgressText = () => {
     if (saveStatus !== "") return saveStatus; 
-    if (downloadProgress < 30) return "Loading Local Assets...";
+    if (downloadProgress < 30) return "Loading AI Model...";
     if (downloadProgress < 85) return "Processing Pixels...";
     if (downloadProgress < 100) return "Finalizing Edges...";
     return "Magic Applied! ✨";
