@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal";
-import { Capacitor, CapacitorHttp } from '@capacitor/core'; 
+import { Capacitor } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
-// --- 100% Native SVG Icons ---
 const Icons = {
   Back: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
   Eraser: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20.5H9" /><path d="M8.7 6.7l10.6 10.6c.9.9.9 2.5 0 3.4v0c-.9.9-2.5.9-3.4 0L5.3 10.1c-.9-.9-.9-2.5 0-3.4v0c.9-.9 2.5-.9 3.4 0z" /></svg>,
@@ -17,30 +16,25 @@ const Icons = {
   GameController: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="15" y2="12"/></svg>
 };
 
-// 🎮 GAME STYLE ROTATING TIPS
 const GAME_TIPS = [
-  "Tip: Best quality AI model takes a moment to load, but delivers perfect edges.",
-  "Tip: Once resources are downloaded, processing will be lightning fast.",
+  "Tip: Offline AI Engine is initializing...",
   "Tip: We process images entirely on your device for 100% privacy.",
-  "Tip: High contrast backgrounds are easier for the AI to detect.",
-  "Tip: ProUtility never uploads your data to any external server."
+  "Tip: Lightning fast background removal loaded.",
+  "Tip: ProUtility never uploads your data to any server."
 ];
 
 const BgRemover = ({ onBack, onNotify }) => {
   const [image, setImage] = useState(null);
   const [imageBlob, setImageBlob] = useState(null); 
-  
   const [processedImage, setProcessedImage] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0); 
-  
   const [isPremium, setIsPremium] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const canvasRef = useRef(null);
   const originalImgRef = useRef(null); 
-  
   const [editMode, setEditMode] = useState('move'); 
   const [brushSize, setBrushSize] = useState(30);
   
@@ -53,7 +47,6 @@ const BgRemover = ({ onBack, onNotify }) => {
   const lastPos = useRef({ x: 0, y: 0 });
 
   const fileInputRef = useRef(null);
-  
   const [tipIndex, setTipIndex] = useState(0);
 
   useEffect(() => {
@@ -79,7 +72,6 @@ const BgRemover = ({ onBack, onNotify }) => {
       img.onload = () => {
         const MAX_WIDTH = 1000; 
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
-        
         const canvas = document.createElement('canvas');
         canvas.width = img.width * scale;
         canvas.height = img.height * scale;
@@ -88,10 +80,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         
         const url = canvas.toDataURL('image/jpeg', 0.9);
         setImage(url);
-        
-        canvas.toBlob((blob) => {
-            setImageBlob(blob);
-        }, 'image/jpeg', 0.9);
+        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.9);
         
         originalImgRef.current = new Image();
         originalImgRef.current.crossOrigin = "anonymous";
@@ -103,68 +92,21 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔴 GAME STYLE NATIVE ASSET LOADER (Bulletproof Offline Engine)
+  // 🔥 100% OFFLINE ENGINE LOGIC
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
-    setSaveStatus("Initializing Native Engine...");
+    setSaveStatus("Starting Offline Engine...");
     
     try {
-      // Default to GitHub link for Web testing
-      let localAssetPath = "https://hariomgupt1888-boop.github.io/ai-assets/"; 
-
-      // 🎮 GAME OBB DOWNLOADER LOGIC (Runs only on Android/iOS)
-      if (Capacitor.isNativePlatform()) {
-          const githubUrl = "https://hariomgupt1888-boop.github.io/ai-assets/";
-          // These are the core heavy files needed by imgly 'medium' model
-          const filesToDownload = ["medium.onnx", "ort-wasm-simd.wasm", "ort-wasm.wasm"];
-          const assetDir = "ai_engine";
-
-          // Create hidden directory
-          try { 
-              await Filesystem.mkdir({ path: assetDir, directory: Directory.Data, recursive: true }); 
-          } catch(e) {}
-
-          for (let i = 0; i < filesToDownload.length; i++) {
-              const file = filesToDownload[i];
-              const filePath = `${assetDir}/${file}`;
-              let needsDownload = true;
-              
-              // Check if file already exists and is not empty
-              try {
-                  const stat = await Filesystem.stat({ path: filePath, directory: Directory.Data });
-                  if (stat.size > 1024) needsDownload = false; 
-              } catch(e) {} // File doesn't exist
-
-              if (needsDownload) {
-                  setSaveStatus(`Downloading Assets (${i+1}/${filesToDownload.length})...`);
-                  // Native download directly to storage (Bypasses WebView Memory Limits!)
-                  await CapacitorHttp.downloadFile({
-                      url: githubUrl + file,
-                      filePath: filePath,
-                      fileDirectory: Directory.Data
-                  });
-              }
-              // Progress bar update for Native Downloader (0 to 30%)
-              setDownloadProgress(Math.round(((i + 1) / filesToDownload.length) * 30));
-          }
-          
-          // Get the local device path and convert it to a web-readable URL
-          const dirStat = await Filesystem.stat({ path: assetDir, directory: Directory.Data });
-          localAssetPath = Capacitor.convertFileSrc(dirStat.uri) + "/";
-      }
-
-      setSaveStatus("Compiling AI Engine...");
-
       const config = {
-        publicPath: localAssetPath, 
-        model: 'medium', 
+        // Seedha locally downloaded assets folder ko point kar raha hai
+        publicPath: "ai-assets/", 
+        model: 'small', // Ensure small 8MB model is used
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
-            // Native download takes first 30%, imgly processing takes 30% to 99%
-            const mappedPercent = Capacitor.isNativePlatform() ? 30 + Math.round(percent * 0.69) : percent;
-            setDownloadProgress(mappedPercent > 99 ? 99 : mappedPercent);
+            setDownloadProgress(percent > 99 ? 99 : percent);
         }
       };
       
@@ -184,22 +126,18 @@ const BgRemover = ({ onBack, onNotify }) => {
       
     } catch (e) {
       console.error("AI Error:", e);
-      alert("⚠️ Engine Error: Please check your internet connection for the first-time setup.");
-      if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual Mode.");
+      alert("⚠️ Engine Error: " + e.message);
+      if (onNotify) onNotify("⚠️ AI couldn't complete.");
       setProcessedImage(image); 
       setEditMode('erase'); 
-      historyRef.current = [];
-      redoRef.current = [];
-      setHistoryCount(0);
       setIsProcessing(false);
       setSaveStatus("");
     }
   };
 
-  // --- Dynamic Progress Text ---
   const getProgressText = () => {
-    if (saveStatus !== "") return saveStatus; // Show custom Native download status
-    if (downloadProgress < 15) return "Connecting to Engine...";
+    if (saveStatus !== "") return saveStatus; 
+    if (downloadProgress < 30) return "Loading Local Assets...";
     if (downloadProgress < 85) return "Processing Pixels...";
     if (downloadProgress < 100) return "Finalizing Edges...";
     return "Magic Applied! ✨";
@@ -350,26 +288,23 @@ const BgRemover = ({ onBack, onNotify }) => {
          setIsSaving(true);
          setSaveStatus("Saving to Phone...");
          try { await Filesystem.requestPermissions(); } catch (e) { }
-
          const base64Data = await blobToBase64(blob);
-         
          await Filesystem.writeFile({
            path: fileName,
            data: base64Data,
            directory: Directory.Documents,
            recursive: true
          });
-         
-         if(onNotify) onNotify("✅ Saved successfully to Documents folder!", false, fileName, 'Image Cutout', blob);
+         if(onNotify) onNotify("✅ Saved successfully!", false, fileName, 'Image Cutout', blob);
       } else {
          const link = document.createElement('a');
          link.download = fileName;
          link.href = dataUrl;
          link.click();
-         if(onNotify) onNotify("✅ Downloaded!", false, fileName, 'Image Cutout', blob);
+         if(onNotify) onNotify("✅ Downloaded!");
       }
     } catch (error) {
-      alert("⚠️ Save Failed!\nPlease allow Storage permissions from your phone's App Settings.");
+      alert("⚠️ Save Failed!\nPlease allow Storage permissions.");
     } finally {
         setIsSaving(false);
         setSaveStatus("");
@@ -423,7 +358,6 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   return (
     <div style={S.wrapper}>
-      {/* 🎮 COOL GAME-STYLE ANIMATIONS */}
       <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
         @keyframes pulseGlow { 0% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } 50% { box-shadow: 0 0 30px rgba(59,130,246,0.8); } 100% { box-shadow: 0 0 15px rgba(59,130,246,0.3); } }
@@ -433,39 +367,24 @@ const BgRemover = ({ onBack, onNotify }) => {
         .tip-text { animation: slideIn 0.5s ease-out forwards; }
       `}</style>
       
-      {/* 🎮 BEAUTIFUL GAME-STYLE DOWNLOADING UI */}
       {(isProcessing || isSaving) && (
          <div style={{position:'absolute', zIndex:50, inset:0, background: image ? `url(${image})` : '#0f172a', backgroundSize: 'cover', backgroundPosition: 'center'}}>
             <div style={{position:'absolute', inset:0, background:'rgba(15,23,42,0.90)', backdropFilter:'blur(15px)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: '20px', textAlign: 'center'}}>
              
              {isProcessing ? (
                <div style={{display:'flex', flexDirection:'column', alignItems:'center', background:'linear-gradient(180deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9))', padding:'40px 30px', borderRadius:'24px', border:'1px solid rgba(59,130,246,0.3)', boxShadow:'0 25px 50px rgba(0,0,0,0.8)'}}>
-                 
-                 {/* Top Icon */}
-                 <div style={{marginBottom: '20px', opacity: 0.8}}>
-                    <Icons.GameController />
-                 </div>
-
-                 {/* Percentage Circle */}
+                 <div style={{marginBottom: '20px', opacity: 0.8}}><Icons.GameController /></div>
                  <div style={{position:'relative', width:'90px', height:'90px', marginBottom:'25px'}}>
                     <div style={{position:'absolute', inset:0, border:'4px solid #334155', borderRadius:'50%'}}></div>
                     <div className="cool-loader" style={{position:'absolute', inset:0, border:'4px solid transparent', borderTopColor:'#3b82f6', borderRightColor:'#3b82f6', borderRadius:'50%', animation:'spin 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite'}}></div>
                     <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'900', fontSize:'22px', color:'white', textShadow: '0 2px 10px rgba(59,130,246,0.5)'}}>{downloadProgress}%</div>
                  </div>
-                 
-                 {/* Main Status Text */}
                  <h2 style={{color: '#f8fafc', margin: '0 0 15px 0', fontSize: '18px', animation:'floatText 2s ease-in-out infinite', letterSpacing: '1px'}}>{getProgressText()}</h2>
-                 
-                 {/* Progress Bar Line */}
                  <div style={{width: '100%', minWidth: '260px', background: '#0f172a', borderRadius: '10px', height: '6px', overflow: 'hidden', border:'1px solid rgba(255,255,255,0.05)'}}>
                      <div style={{width: `${downloadProgress}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #60a5fa)', transition: 'width 0.3s ease-out', borderRadius: '10px', boxShadow: '0 0 10px #3b82f6'}}></div>
                  </div>
-                 
-                 {/* 🎮 Rotating Tips Area */}
                  <div style={{marginTop:'30px', minHeight: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                    <p key={tipIndex} className="tip-text" style={{fontSize:'12px', color:'#94a3b8', maxWidth: '240px', lineHeight:'1.6', fontStyle: 'italic', margin: 0}}>
-                      {GAME_TIPS[tipIndex]}
-                    </p>
+                    <p key={tipIndex} className="tip-text" style={{fontSize:'12px', color:'#94a3b8', maxWidth: '240px', lineHeight:'1.6', fontStyle: 'italic', margin: 0}}>{GAME_TIPS[tipIndex]}</p>
                  </div>
                </div>
              ) : (
@@ -485,23 +404,14 @@ const BgRemover = ({ onBack, onNotify }) => {
             <button onClick={onBack} style={{background:'none', border:'none', color:'white', cursor:'pointer'}}><Icons.Back/></button>
             <span style={{fontWeight:'bold', fontSize:'16px'}}>Pro Cutout</span>
         </div>
-        
         <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
-            <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#e2e8f0', color: isPremium ? '#fff' : '#64748b', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}>
-                <Icons.Crown/> {isPremium ? "Premium" : "Free"}
-            </button>
-
-            {processedImage && (
-                <button onClick={handleSave} disabled={isSaving} style={{background:'#2563eb', padding:'6px 16px', borderRadius:'20px', border:'none', color:'white', fontSize:'14px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 10px rgba(37,99,235,0.4)'}}>
-                    Save
-                </button>
-            )}
+            <button onClick={() => setIsPremium(!isPremium)} style={{padding: '6px 12px', borderRadius:'20px', border:'none', background: isPremium ? '#f59e0b' : '#e2e8f0', color: isPremium ? '#fff' : '#64748b', fontWeight: 'bold', fontSize: '12px', display:'flex', alignItems:'center', gap:'5px', cursor:'pointer'}}><Icons.Crown/> {isPremium ? "Premium" : "Free"}</button>
+            {processedImage && (<button onClick={handleSave} disabled={isSaving} style={{background:'#2563eb', padding:'6px 16px', borderRadius:'20px', border:'none', color:'white', fontSize:'14px', fontWeight:'bold', cursor:'pointer', boxShadow:'0 2px 10px rgba(37,99,235,0.4)'}}>Save</button>)}
         </div>
       </div>
 
       <div style={S.workArea}>
          <div style={S.checkerboard}></div>
-         
          {!image ? (
             <div onClick={() => fileInputRef.current.click()} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', transition:'0.3s', boxShadow:'0 10px 30px rgba(0,0,0,0.3)'}}>
                <Icons.Upload />
@@ -513,12 +423,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                {processedImage ? (
                   <div style={S.container}>
                       <img src={image} style={S.ghostImg} alt="ref" />
-                      <canvas 
-                          ref={canvasRef} 
-                          style={{ maxWidth: '95vw', maxHeight: '75vh', touchAction: 'none', filter:'drop-shadow(0px 10px 20px rgba(0,0,0,0.5))' }}
-                          onMouseDown={resetPath} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp}
-                          onTouchStart={resetPath} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}
-                      />
+                      <canvas ref={canvasRef} style={{ maxWidth: '95vw', maxHeight: '75vh', touchAction: 'none', filter:'drop-shadow(0px 10px 20px rgba(0,0,0,0.5))' }} onMouseDown={resetPath} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp} onTouchStart={resetPath} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}/>
                   </div>
                ) : (
                   <img src={image} style={{maxWidth:'95%', maxHeight:'80%', objectFit:'contain', borderRadius:'12px', boxShadow:'0 10px 30px rgba(0,0,0,0.5)'}} alt="Original" />
@@ -534,7 +439,6 @@ const BgRemover = ({ onBack, onNotify }) => {
                      <button onClick={handleUndo} disabled={historyCount <= 1} style={{background:'none', border:'none', color: historyCount <= 1 ? '#475569' : 'white', cursor:'pointer'}}><Icons.Undo/></button>
                      <button onClick={handleRedo} disabled={redoRef.current.length === 0} style={{background:'none', border:'none', color: redoRef.current.length === 0 ? '#475569' : 'white', cursor:'pointer'}}><Icons.Redo/></button>
                  </div>
-
                  {(editMode === 'erase' || editMode === 'restore') && (
                      <div style={S.sliderWrapper}>
                          <div style={{...S.sliderPreview, width: Math.max(10, brushSize/2), height: Math.max(10, brushSize/2)}}></div>
@@ -543,7 +447,6 @@ const BgRemover = ({ onBack, onNotify }) => {
                  )}
              </div>
          )}
-
          {processedImage ? (
              <div style={S.tabBar}>
                  <button style={S.tabBtn(editMode === 'move')} onClick={() => setEditMode('move')}><Icons.Move /><span>Move</span></button>
@@ -552,13 +455,9 @@ const BgRemover = ({ onBack, onNotify }) => {
              </div>
          ) : (
              <div style={{padding:'20px', display:'flex', justifyContent:'center'}}>
-                 <button 
-                     onClick={runAiRemoval} 
-                     disabled={!image || isProcessing}
-                     style={{background: image ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : '#334155', color:'white', border:'none', padding:'16px 40px', borderRadius:'30px', fontWeight:'bold', fontSize:'16px', display:'flex', alignItems:'center', gap:'10px', boxShadow: image ? '0 10px 25px rgba(37,99,235,0.4)' : 'none', cursor: image ? 'pointer' : 'default', transition: '0.3s'}}
-                 >
+                 <button onClick={runAiRemoval} disabled={!image || isProcessing} style={{background: image ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : '#334155', color:'white', border:'none', padding:'16px 40px', borderRadius:'30px', fontWeight:'bold', fontSize:'16px', display:'flex', alignItems:'center', gap:'10px', boxShadow: image ? '0 10px 25px rgba(37,99,235,0.4)' : 'none', cursor: image ? 'pointer' : 'default', transition: '0.3s'}}>
                      {isProcessing ? null : <Icons.Check />} 
-                     {isProcessing ? 'Processing...' : 'Download Assets & Remove BG'}
+                     {isProcessing ? 'Processing...' : 'Remove Background'}
                  </button>
              </div>
          )}
@@ -566,5 +465,4 @@ const BgRemover = ({ onBack, onNotify }) => {
     </div>
   );
 };
-
 export default BgRemover;

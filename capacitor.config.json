@@ -7,8 +7,6 @@
     "androidScheme": "https",
     "cleartext": true,
     "allowNavigation": [
-      "*.imgly.com",
-      "*.jsdelivr.net",
       "*"
     ]
   },
@@ -20,9 +18,6 @@
       "showSpinner": true,
       "androidSpinnerStyle": "large",
       "spinnerColor": "#3b82f6"
-    },
-    "CapacitorHttp": {
-      "enabled": true
     }
   }
 }
