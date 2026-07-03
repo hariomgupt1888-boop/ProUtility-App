@@ -20,6 +20,9 @@
       "showSpinner": true,
       "androidSpinnerStyle": "large",
       "spinnerColor": "#3b82f6"
+    },
+    "CapacitorHttp": {
+      "enabled": true
     }
   }
 }

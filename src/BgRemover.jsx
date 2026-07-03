@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal";
-import { Capacitor } from '@capacitor/core'; 
+import { Capacitor, CapacitorHttp } from '@capacitor/core'; 
 import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 // --- 100% Native SVG Icons ---
@@ -54,14 +54,12 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const fileInputRef = useRef(null);
   
-  // Rotating Tips State
   const [tipIndex, setTipIndex] = useState(0);
 
   useEffect(() => {
     if (!image && fileInputRef.current) fileInputRef.current.click();
-  }, []);
+  }, [image]);
 
-  // 🎮 Change Tips Every 3 Seconds during Processing
   useEffect(() => {
     let interval;
     if (isProcessing) {
@@ -79,7 +77,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       img.crossOrigin = "anonymous"; 
       
       img.onload = () => {
-        const MAX_WIDTH = 1000; // High-Res limit
+        const MAX_WIDTH = 1000; 
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
         
         const canvas = document.createElement('canvas');
@@ -105,27 +103,75 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔴 GAME STYLE NATIVE ASSET LOADER (Premium Quality Model)
+  // 🔴 GAME STYLE NATIVE ASSET LOADER (Bulletproof Offline Engine)
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
+    setSaveStatus("Initializing Native Engine...");
     
     try {
+      // Default to GitHub link for Web testing
+      let localAssetPath = "https://hariomgupt1888-boop.github.io/ai-assets/"; 
+
+      // 🎮 GAME OBB DOWNLOADER LOGIC (Runs only on Android/iOS)
+      if (Capacitor.isNativePlatform()) {
+          const githubUrl = "https://hariomgupt1888-boop.github.io/ai-assets/";
+          // These are the core heavy files needed by imgly 'medium' model
+          const filesToDownload = ["medium.onnx", "ort-wasm-simd.wasm", "ort-wasm.wasm"];
+          const assetDir = "ai_engine";
+
+          // Create hidden directory
+          try { 
+              await Filesystem.mkdir({ path: assetDir, directory: Directory.Data, recursive: true }); 
+          } catch(e) {}
+
+          for (let i = 0; i < filesToDownload.length; i++) {
+              const file = filesToDownload[i];
+              const filePath = `${assetDir}/${file}`;
+              let needsDownload = true;
+              
+              // Check if file already exists and is not empty
+              try {
+                  const stat = await Filesystem.stat({ path: filePath, directory: Directory.Data });
+                  if (stat.size > 1024) needsDownload = false; 
+              } catch(e) {} // File doesn't exist
+
+              if (needsDownload) {
+                  setSaveStatus(`Downloading Assets (${i+1}/${filesToDownload.length})...`);
+                  // Native download directly to storage (Bypasses WebView Memory Limits!)
+                  await CapacitorHttp.downloadFile({
+                      url: githubUrl + file,
+                      filePath: filePath,
+                      fileDirectory: Directory.Data
+                  });
+              }
+              // Progress bar update for Native Downloader (0 to 30%)
+              setDownloadProgress(Math.round(((i + 1) / filesToDownload.length) * 30));
+          }
+          
+          // Get the local device path and convert it to a web-readable URL
+          const dirStat = await Filesystem.stat({ path: assetDir, directory: Directory.Data });
+          localAssetPath = Capacitor.convertFileSrc(dirStat.uri) + "/";
+      }
+
+      setSaveStatus("Compiling AI Engine...");
+
       const config = {
-        // Bhai, yahan aapka apna personal GitHub link lag gaya hai!
-        publicPath: "https://hariomgupt1888-boop.github.io/ai-assets/", 
-        model: 'medium', // Using 'medium' ensures the BEST quality edge detection
+        publicPath: localAssetPath, 
+        model: 'medium', 
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
-            // Limit to 99% until fully processed to keep user engaged
-            setDownloadProgress(percent > 99 ? 99 : percent);
+            // Native download takes first 30%, imgly processing takes 30% to 99%
+            const mappedPercent = Capacitor.isNativePlatform() ? 30 + Math.round(percent * 0.69) : percent;
+            setDownloadProgress(mappedPercent > 99 ? 99 : mappedPercent);
         }
       };
       
       const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
-      setDownloadProgress(100); // 100% when completely done
+      setDownloadProgress(100); 
+      setSaveStatus(""); 
       
       setTimeout(() => {
           setProcessedImage(url);
@@ -134,11 +180,11 @@ const BgRemover = ({ onBack, onNotify }) => {
           historyRef.current = [];
           redoRef.current = [];
           setHistoryCount(0);
-      }, 500); // Small delay for smooth transition
+      }, 500); 
       
     } catch (e) {
       console.error("AI Error:", e);
-      alert("⚠️ Download Interrupted: Please check your internet connection and try again.");
+      alert("⚠️ Engine Error: Please check your internet connection for the first-time setup.");
       if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual Mode.");
       setProcessedImage(image); 
       setEditMode('erase'); 
@@ -146,14 +192,16 @@ const BgRemover = ({ onBack, onNotify }) => {
       redoRef.current = [];
       setHistoryCount(0);
       setIsProcessing(false);
+      setSaveStatus("");
     }
   };
 
   // --- Dynamic Progress Text ---
   const getProgressText = () => {
-    if (downloadProgress < 15) return "Connecting to Server...";
-    if (downloadProgress < 85) return "Downloading AI Assets...";
-    if (downloadProgress < 100) return "Compiling Native Engine...";
+    if (saveStatus !== "") return saveStatus; // Show custom Native download status
+    if (downloadProgress < 15) return "Connecting to Engine...";
+    if (downloadProgress < 85) return "Processing Pixels...";
+    if (downloadProgress < 100) return "Finalizing Edges...";
     return "Magic Applied! ✨";
   };
 
