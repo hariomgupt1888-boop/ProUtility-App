@@ -13,11 +13,14 @@ const Icons = {
   Undo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>,
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
-  GameController: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="15" y2="12"/></svg>
+  GameController: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="15" y2="12"/></svg>,
+  Bulb: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1.65.68 2.8 1.5 3.5.76.76 1.23 1.52 1.41 2.5"/></svg>,
+  UserFocus: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>,
+  ImageSquare: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
 };
 
 const GAME_TIPS = [
-  "Tip: Loading lightning fast 8MB AI engine...",
+  "Tip: Setting up Pro AI Engine for the first time...",
   "Tip: Best quality edges are being calculated.",
   "Tip: We process images for 100% privacy.",
   "Tip: ProUtility never uploads your data to any server."
@@ -32,6 +35,8 @@ const BgRemover = ({ onBack, onNotify }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [showGuide, setShowGuide] = useState(false); // ✨ NEW: Guide State
+  const [bgColor, setBgColor] = useState('transparent'); // ✨ NEW: Passport Color State
 
   const canvasRef = useRef(null);
   const originalImgRef = useRef(null); 
@@ -48,10 +53,6 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const fileInputRef = useRef(null);
   const [tipIndex, setTipIndex] = useState(0);
-
-  useEffect(() => {
-    if (!image && fileInputRef.current) fileInputRef.current.click();
-  }, [image]);
 
   useEffect(() => {
     let interval;
@@ -88,22 +89,69 @@ const BgRemover = ({ onBack, onNotify }) => {
       };
       img.src = URL.createObjectURL(file);
       setProcessedImage(null);
+      setBgColor('transparent'); // Reset color for new image
       e.target.value = null; 
     }
   };
 
-  // 🔥 THE ULTIMATE 8MB FIX
+  // 🔥 THE SMART FILESYSTEM DOWNLOADER
+  const setupOfflineAI = async () => {
+    if (!Capacitor.isNativePlatform()) return undefined; 
+
+    const assetFolder = 'pro_ai_engine';
+    const assets = [
+      { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm.wasm', path: `${assetFolder}/ort-wasm.wasm` },
+      { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm-simd.wasm', path: `${assetFolder}/ort-wasm-simd.wasm` },
+      { url: 'https://unpkg.com/@imgly/background-removal-data@1.4.5/dist/models/medium', path: `${assetFolder}/models/medium` }
+    ];
+
+    try {
+      let allExist = true;
+      for (const asset of assets) {
+        try {
+          await Filesystem.stat({ path: asset.path, directory: Directory.Data });
+        } catch (e) {
+          allExist = false; break;
+        }
+      }
+
+      if (!allExist) {
+        setSaveStatus("Setting up Pro AI...");
+        try { await Filesystem.mkdir({ path: `${assetFolder}/models`, directory: Directory.Data, recursive: true }); } catch (e) {}
+
+        for (let i = 0; i < assets.length; i++) {
+          setDownloadProgress(Math.round(((i + 1) / assets.length) * 100));
+          await Filesystem.downloadFile({
+            url: assets[i].url,
+            path: assets[i].path,
+            directory: Directory.Data
+          });
+        }
+      }
+
+      const uriRes = await Filesystem.getUri({ path: assetFolder, directory: Directory.Data });
+      return Capacitor.convertFileSrc(uriRes.uri) + '/';
+
+    } catch (e) {
+      return undefined; 
+    }
+  };
+
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
-    setSaveStatus("Connecting to Engine...");
+    setSaveStatus("Initializing...");
     
     try {
+      const localPublicPath = await setupOfflineAI();
+      
       const config = {
-        model: 'small', // Yeh line sab problems khatam kar degi! Sirf 8MB ki file turant aayegi
+        model: 'medium', 
+        ...(localPublicPath && { publicPath: localPublicPath }),
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
+            if (key.includes('compute')) setSaveStatus("Extracting Portrait...");
             setDownloadProgress(percent > 99 ? 99 : percent);
         }
       };
@@ -123,8 +171,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       }, 500); 
       
     } catch (e) {
-      console.error("AI Error:", e);
-      alert("⚠️ Request Failed: Please ensure your internet is on for the quick 8MB setup.");
+      alert("⚠️ Request Failed: Please check internet for one-time setup.");
       if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual.");
       setProcessedImage(image); 
       setEditMode('erase'); 
@@ -135,7 +182,6 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const getProgressText = () => {
     if (saveStatus !== "") return saveStatus; 
-    if (downloadProgress < 30) return "Loading AI Model...";
     if (downloadProgress < 85) return "Processing Pixels...";
     if (downloadProgress < 100) return "Finalizing Edges...";
     return "Magic Applied! ✨";
@@ -280,6 +326,24 @@ const BgRemover = ({ onBack, onNotify }) => {
     });
   };
 
+  // ✨ NEW: Canvas Background Fill Logic Before Save
+  const exportImageWithBackground = () => {
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = canvasRef.current.width;
+    exportCanvas.height = canvasRef.current.height;
+    const ctx = exportCanvas.getContext('2d');
+    
+    // Agar user ne color chuna hai, toh usko paint karo
+    if (bgColor !== 'transparent') {
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    }
+    
+    // Phir apna cutout photo uske upar chipka do
+    ctx.drawImage(canvasRef.current, 0, 0);
+    return exportCanvas.toDataURL('image/png');
+  };
+
   const executeDownload = async (dataUrl, fileName, blob) => {
     try {
       if (Capacitor.isNativePlatform()) {
@@ -314,11 +378,12 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const handleSave = async () => {
     if (canvasRef.current && !isSaving) {
-        const dataUrl = canvasRef.current.toDataURL('image/png');
+        // ✨ NEW: Call the export function to include the background color
+        const dataUrl = exportImageWithBackground();
         try {
             const response = await fetch(dataUrl);
             const blob = await response.blob();
-            const finalName = `ProUtility_Cutout_${Date.now()}.png`;
+            const finalName = `ProUtility_Passport_${Date.now()}.png`;
 
             if (isPremium) {
               await executeDownload(dataUrl, finalName, blob);
@@ -344,14 +409,17 @@ const BgRemover = ({ onBack, onNotify }) => {
     checkerboard: { position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)', backgroundSize: '20px 20px' },
     container: { transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s', position: 'relative' },
     ghostImg: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: editMode === 'restore' ? 0.4 : 0, transition: 'opacity 0.3s', pointerEvents: 'none' },
-    bottomBar: { background: '#1e293b', borderTop: '1px solid #334155', paddingBottom: '90px' }, 
+    bottomBar: { background: '#1e293b', borderTop: '1px solid #334155', paddingBottom: '90px', display: 'flex', flexDirection: 'column' }, 
     actionRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 20px', background: '#0f172a', borderTopLeftRadius: '20px', borderTopRightRadius: '20px' },
     undoGroup: { display: 'flex', gap: '20px' },
     sliderWrapper: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '15px' },
     sliderPreview: { background:'white', borderRadius:'50%', border:'2px solid #2563eb', transition:'0.1s' },
     sliderInput: { width: '130px', accentColor: '#2563eb', height: '4px', cursor:'pointer' },
-    tabBar: { display: 'flex', justifyContent: 'space-around', padding: '15px 10px' },
-    tabBtn: (isActive) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: isActive ? '#3b82f6' : '#94a3b8', background: 'none', border: 'none', fontSize: '12px', fontWeight: '600', minWidth: '70px', cursor:'pointer' })
+    tabBar: { display: 'flex', justifyContent: 'space-around', padding: '15px 10px', background: '#1e293b' },
+    tabBtn: (isActive) => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: isActive ? '#3b82f6' : '#94a3b8', background: 'none', border: 'none', fontSize: '12px', fontWeight: '600', minWidth: '70px', cursor:'pointer' }),
+    // ✨ NEW: Styles for Color Picker
+    colorPickerRow: { display: 'flex', gap: '15px', justifyContent: 'center', padding: '10px 0', background: '#1e293b' },
+    colorBtn: (color, isSelected) => ({ width: '30px', height: '30px', borderRadius: '50%', background: color, border: isSelected ? '3px solid #3b82f6' : '2px solid #334155', cursor: 'pointer', boxShadow: isSelected ? '0 0 10px rgba(59,130,246,0.5)' : 'none', backgroundImage: color === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : 'none', backgroundSize: '8px 8px' })
   };
 
   return (
@@ -364,6 +432,30 @@ const BgRemover = ({ onBack, onNotify }) => {
         .cool-loader { animation: pulseGlow 2s infinite alternate; }
         .tip-text { animation: slideIn 0.5s ease-out forwards; }
       `}</style>
+
+      {/* ✨ NEW: User Guide Pop-up */}
+      {showGuide && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(10px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#1e293b', borderRadius: '24px', padding: '30px', width: '100%', maxWidth: '350px', border: '1px solid #334155', boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }}>
+            <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', color: 'white', textAlign: 'center' }}>Perfect Photo Guide</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ padding: '10px', background: 'rgba(234,179,8,0.1)', borderRadius: '12px' }}><Icons.Bulb /></div>
+                <div><h4 style={{ margin: 0, color: '#f8fafc', fontSize: '15px' }}>Good Lighting</h4><p style={{ margin: '5px 0 0 0', color: '#94a3b8', fontSize: '13px' }}>Avoid harsh shadows on your face.</p></div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ padding: '10px', background: 'rgba(59,130,246,0.1)', borderRadius: '12px' }}><Icons.UserFocus /></div>
+                <div><h4 style={{ margin: 0, color: '#f8fafc', fontSize: '15px' }}>Look Straight</h4><p style={{ margin: '5px 0 0 0', color: '#94a3b8', fontSize: '13px' }}>Keep your phone at eye level.</p></div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{ padding: '10px', background: 'rgba(16,185,129,0.1)', borderRadius: '12px' }}><Icons.ImageSquare /></div>
+                <div><h4 style={{ margin: 0, color: '#f8fafc', fontSize: '15px' }}>Clear Background</h4><p style={{ margin: '5px 0 0 0', color: '#94a3b8', fontSize: '13px' }}>Stand in front of a plain wall.</p></div>
+              </div>
+            </div>
+            <button onClick={() => { setShowGuide(false); fileInputRef.current.click(); }} style={{ width: '100%', background: '#2563eb', color: 'white', border: 'none', padding: '15px', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 10px 20px rgba(37,99,235,0.3)' }}>Got it! Open Camera</button>
+          </div>
+        </div>
+      )}
       
       {(isProcessing || isSaving) && (
          <div style={{position:'absolute', zIndex:50, inset:0, background: image ? `url(${image})` : '#0f172a', backgroundSize: 'cover', backgroundPosition: 'center'}}>
@@ -411,7 +503,8 @@ const BgRemover = ({ onBack, onNotify }) => {
       <div style={S.workArea}>
          <div style={S.checkerboard}></div>
          {!image ? (
-            <div onClick={() => fileInputRef.current.click()} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', transition:'0.3s', boxShadow:'0 10px 30px rgba(0,0,0,0.3)'}}>
+            // ✨ NEW: Button triggers Guide first, not file input directly
+            <div onClick={() => setShowGuide(true)} style={{background:'#1e293b', padding:'40px', borderRadius:'24px', border:'2px dashed #475569', display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer', transition:'0.3s', boxShadow:'0 10px 30px rgba(0,0,0,0.3)'}}>
                <Icons.Upload />
                <p style={{color:'#f8fafc', fontWeight:'bold', marginTop:'15px', fontSize:'16px'}}>Tap to Upload Image</p>
                <input ref={fileInputRef} type="file" style={{display:'none'}} accept="image/*" onChange={handleImageUpload} />
@@ -421,7 +514,8 @@ const BgRemover = ({ onBack, onNotify }) => {
                {processedImage ? (
                   <div style={S.container}>
                       <img src={image} style={S.ghostImg} alt="ref" />
-                      <canvas ref={canvasRef} style={{ maxWidth: '95vw', maxHeight: '75vh', touchAction: 'none', filter:'drop-shadow(0px 10px 20px rgba(0,0,0,0.5))' }} onMouseDown={resetPath} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp} onTouchStart={resetPath} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}/>
+                      {/* ✨ NEW: canvas now inherits the background color live! */}
+                      <canvas ref={canvasRef} style={{ maxWidth: '95vw', maxHeight: '75vh', touchAction: 'none', filter:'drop-shadow(0px 10px 20px rgba(0,0,0,0.5))', backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor }} onMouseDown={resetPath} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp} onTouchStart={resetPath} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}/>
                   </div>
                ) : (
                   <img src={image} style={{maxWidth:'95%', maxHeight:'80%', objectFit:'contain', borderRadius:'12px', boxShadow:'0 10px 30px rgba(0,0,0,0.5)'}} alt="Original" />
@@ -445,6 +539,17 @@ const BgRemover = ({ onBack, onNotify }) => {
                  )}
              </div>
          )}
+
+         {/* ✨ NEW: Background Color Picker */}
+         {processedImage && (
+             <div style={S.colorPickerRow}>
+                 <button onClick={() => setBgColor('transparent')} style={S.colorBtn('transparent', bgColor === 'transparent')} title="Transparent"></button>
+                 <button onClick={() => setBgColor('#005bb5')} style={S.colorBtn('#005bb5', bgColor === '#005bb5')} title="Passport Blue"></button>
+                 <button onClick={() => setBgColor('#ffffff')} style={S.colorBtn('#ffffff', bgColor === '#ffffff')} title="White"></button>
+                 <button onClick={() => setBgColor('#ef4444')} style={S.colorBtn('#ef4444', bgColor === '#ef4444')} title="Red"></button>
+             </div>
+         )}
+
          {processedImage ? (
              <div style={S.tabBar}>
                  <button style={S.tabBtn(editMode === 'move')} onClick={() => setEditMode('move')}><Icons.Move /><span>Move</span></button>
