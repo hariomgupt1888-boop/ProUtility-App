@@ -85,8 +85,10 @@ const BgRemover = ({ onBack, onNotify }) => {
       const img = new Image();
       img.crossOrigin = "anonymous"; 
       img.onload = () => {
-        // Reduced Max Width slightly to guarantee no memory crash on older phones
-        const MAX_WIDTH = 800; 
+        // 🚀 THE ULTIMATE WHITE-SCREEN (OOM) FIX 🚀
+        // पासपोर्ट फोटो के लिए 600px से ज़्यादा की ज़रूरत नहीं होती।
+        // इससे Android WebView की RAM ओवरलोड नहीं होगी और ऐप कभी क्रैश (सफ़ेद) नहीं होगी।
+        const MAX_WIDTH = 600; 
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
         const canvas = document.createElement('canvas');
         canvas.width = img.width * scale;
@@ -94,9 +96,10 @@ const BgRemover = ({ onBack, onNotify }) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        const url = canvas.toDataURL('image/jpeg', 0.9);
+        // Quality को 0.8 रखा गया है ताकि Blob हल्का रहे और RAM न खाए
+        const url = canvas.toDataURL('image/jpeg', 0.8);
         setImage(url);
-        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.9);
+        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.8);
         
         originalImgRef.current = new Image();
         originalImgRef.current.crossOrigin = "anonymous";
@@ -110,10 +113,8 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🚀 1. THE PERMANENT DOWNLOADER ENGINE
   const setupOfflineAI = async () => {
     if (!Capacitor.isNativePlatform()) return undefined; 
-    
     const assetFolder = 'pro_ai_engine';
     const assets = [
       { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm.wasm', path: `${assetFolder}/ort-wasm.wasm` },
@@ -123,42 +124,23 @@ const BgRemover = ({ onBack, onNotify }) => {
 
     try {
       let allExist = true;
-      // Step A: Check if files are already permanently saved
       for (const asset of assets) {
-        try { 
-           await Filesystem.stat({ path: asset.path, directory: Directory.Data }); 
-        } catch (e) { 
-           allExist = false; 
-           break; 
-        }
+        try { await Filesystem.stat({ path: asset.path, directory: Directory.Data }); } 
+        catch (e) { allExist = false; break; }
       }
-
-      // Step B: If not saved, download them PERMANENTLY to Directory.Data
       if (!allExist) {
-        setSaveStatus("Setting up Pro AI (One-time)...");
+        setSaveStatus("Setting up Pro AI...");
         try { await Filesystem.mkdir({ path: `${assetFolder}/models`, directory: Directory.Data, recursive: true }); } catch (e) {}
-        
         for (let i = 0; i < assets.length; i++) {
           setDownloadProgress(Math.round(((i + 1) / assets.length) * 100));
-          await Filesystem.downloadFile({ 
-             url: assets[i].url, 
-             path: assets[i].path, 
-             directory: Directory.Data 
-          });
+          await Filesystem.downloadFile({ url: assets[i].url, path: assets[i].path, directory: Directory.Data });
         }
       }
-
-      // Step C: Generate a local device URL that the AI library can read securely
       const uriRes = await Filesystem.getUri({ path: assetFolder, directory: Directory.Data });
       return Capacitor.convertFileSrc(uriRes.uri) + '/';
-
-    } catch (e) { 
-      console.error("Setup Error:", e);
-      return undefined; 
-    }
+    } catch (e) { return undefined; }
   };
 
-  // 🚀 2. THE AI RUNNER
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
@@ -167,10 +149,8 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const localPublicPath = await setupOfflineAI();
-      
       const config = {
-        model: 'small', 
-        // Force the AI library to use our permanent local folder instead of the internet!
+        model: 'small', // Stable model for mobile devices
         ...(localPublicPath && { publicPath: localPublicPath }),
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
@@ -195,7 +175,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       }, 500); 
       
     } catch (e) {
-      alert("⚠️ Processing Failed: Internet required for first-time setup only.");
+      alert("⚠️ Processing Failed: Please check internet or try a smaller image.");
       setProcessedImage(image); 
       setStep('edit');
       setEditMode('erase'); 
@@ -213,7 +193,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         img.onload = () => {
           canvasRef.current.width = img.width;
           canvasRef.current.height = img.height;
-          // Enhancing render quality for small model
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0);
