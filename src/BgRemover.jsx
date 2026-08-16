@@ -29,15 +29,18 @@ const GAME_TIPS = [
 const BgRemover = ({ onBack, onNotify }) => {
   const [step, setStep] = useState('upload'); 
   const [image, setImage] = useState(null);
-  const [imageBlob, setImageBlob] = useState(null); 
+  const [imageFile, setImageFile] = useState(null); // RAW File (No Canvas Heavy processing)
   const [processedImage, setProcessedImage] = useState(null);
+  
+  // To avoid White Screen on Print page
+  const [finalPrintUrl, setFinalPrintUrl] = useState(null);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0); 
   const [isPremium, setIsPremium] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   
-  // Custom Print Configuration
   const [printCopies, setPrintCopies] = useState(6);
   const [photoSize, setPhotoSize] = useState('35x45 mm');
 
@@ -47,7 +50,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const canvasRef = useRef(null);
   const originalImgRef = useRef(null); 
-  const [editMode, setEditMode] = useState('bg'); // Default to BG for instant colors
+  const [editMode, setEditMode] = useState('bg'); 
   const [brushSize, setBrushSize] = useState(30);
   
   const historyRef = useRef([]);
@@ -62,7 +65,6 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const passportColors = ['transparent', '#005bb5', '#ffffff', '#ff0000', '#38bdf8', '#fbbf24', '#94a3b8'];
 
-  // Auto Close Guide after 5 seconds
   useEffect(() => {
     let timer;
     if (showGuide && step === 'upload') {
@@ -79,33 +81,17 @@ const BgRemover = ({ onBack, onNotify }) => {
     return () => clearInterval(interval);
   }, [isProcessing]);
 
+  // 🚀 FIX 1: Send RAW File exactly like it used to work before!
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      const img = new Image();
-      img.crossOrigin = "anonymous"; 
-      img.onload = () => {
-        // 🚀 THE ULTIMATE WHITE-SCREEN (OOM) FIX 🚀
-        // पासपोर्ट फोटो के लिए 600px से ज़्यादा की ज़रूरत नहीं होती।
-        // इससे Android WebView की RAM ओवरलोड नहीं होगी और ऐप कभी क्रैश (सफ़ेद) नहीं होगी।
-        const MAX_WIDTH = 600; 
-        const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // Quality को 0.8 रखा गया है ताकि Blob हल्का रहे और RAM न खाए
-        const url = canvas.toDataURL('image/jpeg', 0.8);
-        setImage(url);
-        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.8);
-        
-        originalImgRef.current = new Image();
-        originalImgRef.current.crossOrigin = "anonymous";
-        originalImgRef.current.src = url;
-      };
-      img.src = URL.createObjectURL(file);
+      const url = URL.createObjectURL(file);
+      setImage(url);
+      setImageFile(file); // Passing Raw File to AI (Super Fast, No RAM Crash)
+      
+      originalImgRef.current = new Image();
+      originalImgRef.current.src = url;
+
       setProcessedImage(null);
       setBgColor('transparent');
       setStep('preview');
@@ -142,7 +128,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   const runAiRemoval = async () => {
-    if (!imageBlob) return; 
+    if (!imageFile) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
     setSaveStatus("Initializing...");
@@ -150,7 +136,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     try {
       const localPublicPath = await setupOfflineAI();
       const config = {
-        model: 'small', // Stable model for mobile devices
+        model: 'small', // Lightest Model
         ...(localPublicPath && { publicPath: localPublicPath }),
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
@@ -159,7 +145,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         }
       };
       
-      const blob = await removeBackground(imageBlob, config);
+      const blob = await removeBackground(imageFile, config);
       const url = URL.createObjectURL(blob);
       setDownloadProgress(100); 
       setSaveStatus(""); 
@@ -175,7 +161,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       }, 500); 
       
     } catch (e) {
-      alert("⚠️ Processing Failed: Please check internet or try a smaller image.");
+      alert("⚠️ Processing Failed: Error parsing image.");
       setProcessedImage(image); 
       setStep('edit');
       setEditMode('erase'); 
@@ -183,19 +169,25 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // Canvas & Editing Logic
+  // Canvas Logic with Memory Lock
   useEffect(() => {
     if (processedImage && canvasRef.current && step === 'edit') {
       try {
         const ctx = canvasRef.current.getContext('2d');
         const img = new Image();
-        img.crossOrigin = "anonymous"; 
         img.onload = () => {
-          canvasRef.current.width = img.width;
-          canvasRef.current.height = img.height;
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0);
+          // 🚀 FIX 2: Limit Canvas RAM Size so WebView doesn't crash
+          const MAX_CANVAS = 800;
+          let w = img.width;
+          let h = img.height;
+          if(w > MAX_CANVAS || h > MAX_CANVAS){
+             const ratio = Math.min(MAX_CANVAS/w, MAX_CANVAS/h);
+             w *= ratio;
+             h *= ratio;
+          }
+          canvasRef.current.width = w;
+          canvasRef.current.height = h;
+          ctx.drawImage(img, 0, 0, w, h);
           saveHistoryState(); 
         };
         img.src = processedImage;
@@ -209,7 +201,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     if (canvasRef.current) {
         redoRef.current = [];
         if(historyRef.current.length > 15) historyRef.current.shift(); 
-        const stateUrl = canvasRef.current.toDataURL('image/png'); 
+        const stateUrl = canvasRef.current.toDataURL('image/png', 0.8); 
         historyRef.current.push(stateUrl);
         setHistoryCount(historyRef.current.length);
     }
@@ -247,6 +239,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const getCanvasCoords = (e) => {
     const canvas = canvasRef.current;
+    if (!canvas) return {x:0, y:0};
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
@@ -284,7 +277,9 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   const paint = (e) => {
-    const ctx = canvasRef.current.getContext('2d');
+    const canvas = canvasRef.current;
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
     const { x, y } = getCanvasCoords(e);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -302,14 +297,16 @@ const BgRemover = ({ onBack, onNotify }) => {
       ctx.beginPath();
       ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
       ctx.clip();
-      if (originalImgRef.current) ctx.drawImage(originalImgRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      if (originalImgRef.current) ctx.drawImage(originalImgRef.current, 0, 0, canvas.width, canvas.height);
       ctx.restore();
       ctx.beginPath();
       ctx.moveTo(x, y);
     }
   };
 
-  const exportImageWithBackground = () => {
+  // 🚀 FIX 3: Safe Exporting for Print (Generate Once, use everywhere!)
+  const goToPrintLayout = () => {
+    if(!canvasRef.current) return;
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = canvasRef.current.width;
     exportCanvas.height = canvasRef.current.height;
@@ -319,20 +316,19 @@ const BgRemover = ({ onBack, onNotify }) => {
       ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
     }
     ctx.drawImage(canvasRef.current, 0, 0);
-    return exportCanvas.toDataURL('image/png');
+    
+    // Save generated URL so we don't recalculate it 12 times!
+    setFinalPrintUrl(exportCanvas.toDataURL('image/png', 1.0));
+    setStep('print');
   };
 
-  const executeDownload = async (dataUrl, fileName, blob) => {
+  const executeDownload = async (dataUrl, fileName) => {
     try {
       if (Capacitor.isNativePlatform()) {
          try { await Filesystem.requestPermissions(); } catch (e) { }
-         const reader = new FileReader();
-         reader.readAsDataURL(blob);
-         reader.onloadend = async () => {
-            const base64Data = reader.result.split(',')[1];
-            await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents, recursive: true });
-            if(onNotify) onNotify("✅ Saved successfully!", false, fileName, 'Image Cutout', blob);
-         }
+         const base64Data = dataUrl.split(',')[1];
+         await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents, recursive: true });
+         if(onNotify) onNotify("✅ Saved successfully!", false, fileName, 'Image Cutout', null);
       } else {
          const link = document.createElement('a');
          link.download = fileName;
@@ -348,26 +344,15 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🔥 AD LOGIC INCORPORATED IN SAVE
   const handleSave = async () => {
-    if (!canvasRef.current || isSaving) return;
-    
+    if (!finalPrintUrl || isSaving) return;
     setIsSaving(true);
     setSaveStatus("Watching Ad to Save...");
     
-    // Simulate 3 seconds Ad duration
     setTimeout(async () => {
         setSaveStatus("Saving Image...");
-        const dataUrl = exportImageWithBackground();
-        try {
-            const response = await fetch(dataUrl);
-            const blob = await response.blob();
-            const finalName = `ProPassport_${Date.now()}.png`;
-            await executeDownload(dataUrl, finalName, blob);
-        } catch (e) { 
-            alert("Failed to process image."); 
-            setIsSaving(false);
-        }
+        const finalName = `ProPassport_${Date.now()}.png`;
+        await executeDownload(finalPrintUrl, finalName);
     }, 3000);
   };
 
@@ -380,7 +365,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] font-sans flex flex-col relative overflow-hidden text-white">
       
-      {/* 1. AUTO-CLOSING GUIDE MODAL (WITH CROSS) */}
+      {/* 1. AUTO-CLOSING GUIDE MODAL */}
       {showGuide && step === 'upload' && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity">
           <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl relative">
@@ -412,7 +397,6 @@ const BgRemover = ({ onBack, onNotify }) => {
       {(isProcessing || isSaving) && (
          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 flex-col text-center">
             {isSaving && saveStatus.includes("Ad") ? (
-               // FAKE AD UI
                <div className="flex flex-col items-center">
                   <div className="w-16 h-16 border-4 border-transparent border-t-yellow-400 rounded-full animate-spin mb-6"></div>
                   <h2 className="text-2xl font-bold text-white mb-2">Sponsor Message</h2>
@@ -452,23 +436,19 @@ const BgRemover = ({ onBack, onNotify }) => {
       <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
       <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleImageUpload} />
 
-      {/* 4. MAIN BODY (Flex-1 avoids overlap) */}
+      {/* 4. MAIN BODY */}
       <div className="flex-1 bg-[#151b2b] rounded-t-[2.5rem] flex flex-col relative overflow-hidden shadow-inner w-full max-w-md mx-auto">
-         
          <div className="absolute inset-0 opacity-20 pointer-events-none" style={checkerboardStyle}></div>
 
-         {/* STEP A: CAMERA & GALLERY SELECTION */}
+         {/* STEP A: UPLOAD */}
          {step === 'upload' && (
             <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
-                
                 <div className="w-full max-w-sm mb-12">
                    <div className="aspect-[3/4] border-2 border-dashed border-blue-500/30 rounded-[2rem] bg-blue-500/5 flex flex-col items-center justify-center shadow-lg">
                       <Icons.Upload />
-                      <p className="mt-4 text-gray-400 font-medium text-center px-4">Upload a clear photo with good lighting</p>
+                      <p className="mt-4 text-gray-400 font-medium text-center px-4">Upload a clear photo</p>
                    </div>
                 </div>
-
-                {/* Bottom Action Sheet for Camera/Gallery */}
                 <div className="w-full flex gap-4 mt-auto pb-4">
                    <button onClick={() => cameraInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700 shadow-xl">
                       <div className="text-blue-400"><Icons.Camera /></div>
@@ -492,11 +472,9 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
 
-         {/* STEP C: EDITOR UI */}
+         {/* STEP C: EDITOR */}
          {step === 'edit' && (
             <div className="flex-1 flex flex-col z-10 h-full">
-                
-                {/* Canvas Area */}
                 <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
                     <div style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s', position: 'relative' }}>
                         <img src={image} className="absolute top-0 left-0 w-full h-full pointer-events-none transition-opacity duration-300" style={{ opacity: editMode === 'restore' ? 0.3 : 0 }} alt="ref" />
@@ -509,10 +487,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                     </div>
                 </div>
 
-                {/* Bottom Tools Sheet */}
                 <div className="bg-[#0a0f1d] rounded-t-[2.5rem] p-5 pb-6 flex flex-col gap-4 shadow-2xl shrink-0 border-t border-gray-800 z-20">
-                    
-                    {/* Tool Settings Row */}
                     <div className="flex justify-between items-center h-[50px]">
                         <div className="flex gap-1 pr-2">
                             <button onClick={handleUndo} disabled={historyCount <= 1} className={`p-2 ${historyCount <= 1 ? 'text-gray-700' : 'text-gray-300 hover:text-white'}`}><Icons.Undo/></button>
@@ -526,13 +501,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                                     <input type="range" min="10" max="100" value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} className="w-32 accent-blue-500" />
                                 </div>
                             )}
-
-                            {editMode === 'crop' && (
-                                <div className="flex items-center gap-2 text-sm text-gray-400 font-medium">
-                                    <span>Pinch/Drag to Crop & Pan</span>
-                                </div>
-                            )}
-
+                            {editMode === 'crop' && <span className="text-sm text-gray-400 font-medium">Drag to Pan</span>}
                             {editMode === 'bg' && (
                                 <div className="flex gap-3 overflow-x-auto pb-1 px-1 snap-x">
                                     {passportColors.map((color, idx) => (
@@ -547,61 +516,42 @@ const BgRemover = ({ onBack, onNotify }) => {
                         </div>
                     </div>
 
-                    {/* Main Tools Nav */}
                     <div className="flex justify-around items-center pt-2 pb-2 bg-gray-900/50 rounded-2xl border border-gray-800 p-2">
-                        <button onClick={() => setEditMode('crop')} className={`flex flex-col items-center gap-1.5 ${editMode === 'crop' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}>
-                            <Icons.Crop /> <span className="text-[10px] font-bold">Crop/Pan</span>
-                        </button>
-                        <button onClick={() => setEditMode('bg')} className={`flex flex-col items-center gap-1.5 ${editMode === 'bg' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}>
-                            <Icons.Background /> <span className="text-[10px] font-bold">Background</span>
-                        </button>
-                        <button onClick={() => setEditMode('restore')} className={`flex flex-col items-center gap-1.5 ${editMode === 'restore' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}>
-                            <Icons.Brush /> <span className="text-[10px] font-bold">Restore</span>
-                        </button>
-                        <button onClick={() => setEditMode('erase')} className={`flex flex-col items-center gap-1.5 ${editMode === 'erase' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}>
-                            <Icons.Eraser /> <span className="text-[10px] font-bold">Eraser</span>
-                        </button>
+                        <button onClick={() => setEditMode('crop')} className={`flex flex-col items-center gap-1.5 ${editMode === 'crop' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}><Icons.Crop /> <span className="text-[10px] font-bold">Pan</span></button>
+                        <button onClick={() => setEditMode('bg')} className={`flex flex-col items-center gap-1.5 ${editMode === 'bg' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}><Icons.Background /> <span className="text-[10px] font-bold">Background</span></button>
+                        <button onClick={() => setEditMode('restore')} className={`flex flex-col items-center gap-1.5 ${editMode === 'restore' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}><Icons.Brush /> <span className="text-[10px] font-bold">Restore</span></button>
+                        <button onClick={() => setEditMode('erase')} className={`flex flex-col items-center gap-1.5 ${editMode === 'erase' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}><Icons.Eraser /> <span className="text-[10px] font-bold">Eraser</span></button>
                     </div>
 
-                    <button onClick={() => setStep('print')} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl text-[15px] shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-colors mt-2">
+                    <button onClick={goToPrintLayout} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl text-[15px] shadow-[0_0_15px_rgba(37,99,235,0.4)] transition-colors mt-2">
                         Configure Layout 🖨️
                     </button>
                 </div>
             </div>
          )}
 
-         {/* STEP D: CUSTOM PRINT & COPIES SCREEN */}
+         {/* STEP D: CUSTOM PRINT SCREEN */}
          {step === 'print' && (
             <div className="flex-1 flex flex-col bg-[#0a0f1d] p-4 h-full z-10">
-              
               <div className="flex-1 bg-gray-100 rounded-2xl shadow-inner p-4 overflow-y-auto mb-4 border border-gray-700 flex flex-col">
                 <div className="w-full flex justify-between text-gray-500 text-xs font-bold mb-4 uppercase">
                     <span>{photoSize}</span>
                     <span>Preview</span>
                 </div>
-                {/* Dynamic Grid Layout based on 'printCopies' */}
+                {/* SAFE RENDER: Using the pre-generated finalPrintUrl instead of calling canvas 12 times */}
                 <div className={`grid gap-2 ${printCopies <= 4 ? 'grid-cols-2' : printCopies <= 9 ? 'grid-cols-3' : 'grid-cols-4'} w-full mx-auto pb-4`}>
                   {Array.from({ length: printCopies }).map((_, i) => (
-                    <div 
-                      key={i} 
-                      className="aspect-[3/4] border-[1px] border-dashed border-gray-400 flex items-end justify-center overflow-hidden shadow-sm"
-                      style={{ backgroundColor: bgColor === 'transparent' ? '#ffffff' : bgColor }}
-                    >
-                      <img src={exportImageWithBackground()} alt={`copy-${i}`} className="w-full h-full object-contain" />
+                    <div key={i} className="aspect-[3/4] border-[1px] border-dashed border-gray-400 flex items-end justify-center overflow-hidden shadow-sm bg-white">
+                      <img src={finalPrintUrl} alt={`copy-${i}`} className="w-full h-full object-contain" />
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Custom Layout Panel */}
               <div className="bg-gray-900 rounded-3xl p-5 text-white shrink-0 shadow-2xl border border-gray-800">
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-gray-400 text-sm font-medium">Photo Size</span>
-                  <select 
-                     value={photoSize} 
-                     onChange={(e) => setPhotoSize(e.target.value)}
-                     className="bg-gray-800 text-white text-sm font-bold border border-gray-700 rounded-lg px-3 py-1.5 focus:outline-none"
-                  >
+                  <select value={photoSize} onChange={(e) => setPhotoSize(e.target.value)} className="bg-gray-800 text-white text-sm font-bold border border-gray-700 rounded-lg px-3 py-1.5 focus:outline-none">
                      <option value="35x45 mm">35x45 mm (India/UK)</option>
                      <option value="2x2 in">2x2 in (US Visa)</option>
                      <option value="30x40 mm">30x40 mm (UAE)</option>
@@ -625,7 +575,6 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
       </div>
-
     </div>
   );
 };
