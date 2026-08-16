@@ -47,7 +47,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const canvasRef = useRef(null);
   const originalImgRef = useRef(null); 
-  const [editMode, setEditMode] = useState('crop'); // 'crop', 'bg', 'restore', 'erase'
+  const [editMode, setEditMode] = useState('bg'); // Default to BG for instant colors
   const [brushSize, setBrushSize] = useState(30);
   
   const historyRef = useRef([]);
@@ -85,7 +85,8 @@ const BgRemover = ({ onBack, onNotify }) => {
       const img = new Image();
       img.crossOrigin = "anonymous"; 
       img.onload = () => {
-        const MAX_WIDTH = 1000; 
+        // Reduced Max Width slightly to guarantee no memory crash on older phones
+        const MAX_WIDTH = 800; 
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
         const canvas = document.createElement('canvas');
         canvas.width = img.width * scale;
@@ -109,34 +110,55 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
+  // 🚀 1. THE PERMANENT DOWNLOADER ENGINE
   const setupOfflineAI = async () => {
     if (!Capacitor.isNativePlatform()) return undefined; 
+    
     const assetFolder = 'pro_ai_engine';
     const assets = [
       { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm.wasm', path: `${assetFolder}/ort-wasm.wasm` },
       { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm-simd.wasm', path: `${assetFolder}/ort-wasm-simd.wasm` },
-      { url: 'https://unpkg.com/@imgly/background-removal-data@1.4.5/dist/models/medium', path: `${assetFolder}/models/medium` }
+      { url: 'https://unpkg.com/@imgly/background-removal-data@1.4.5/dist/models/small', path: `${assetFolder}/models/small` }
     ];
 
     try {
       let allExist = true;
+      // Step A: Check if files are already permanently saved
       for (const asset of assets) {
-        try { await Filesystem.stat({ path: asset.path, directory: Directory.Data }); } 
-        catch (e) { allExist = false; break; }
-      }
-      if (!allExist) {
-        setSaveStatus("Setting up Pro AI...");
-        try { await Filesystem.mkdir({ path: `${assetFolder}/models`, directory: Directory.Data, recursive: true }); } catch (e) {}
-        for (let i = 0; i < assets.length; i++) {
-          setDownloadProgress(Math.round(((i + 1) / assets.length) * 100));
-          await Filesystem.downloadFile({ url: assets[i].url, path: assets[i].path, directory: Directory.Data });
+        try { 
+           await Filesystem.stat({ path: asset.path, directory: Directory.Data }); 
+        } catch (e) { 
+           allExist = false; 
+           break; 
         }
       }
+
+      // Step B: If not saved, download them PERMANENTLY to Directory.Data
+      if (!allExist) {
+        setSaveStatus("Setting up Pro AI (One-time)...");
+        try { await Filesystem.mkdir({ path: `${assetFolder}/models`, directory: Directory.Data, recursive: true }); } catch (e) {}
+        
+        for (let i = 0; i < assets.length; i++) {
+          setDownloadProgress(Math.round(((i + 1) / assets.length) * 100));
+          await Filesystem.downloadFile({ 
+             url: assets[i].url, 
+             path: assets[i].path, 
+             directory: Directory.Data 
+          });
+        }
+      }
+
+      // Step C: Generate a local device URL that the AI library can read securely
       const uriRes = await Filesystem.getUri({ path: assetFolder, directory: Directory.Data });
       return Capacitor.convertFileSrc(uriRes.uri) + '/';
-    } catch (e) { return undefined; }
+
+    } catch (e) { 
+      console.error("Setup Error:", e);
+      return undefined; 
+    }
   };
 
+  // 🚀 2. THE AI RUNNER
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
@@ -145,8 +167,10 @@ const BgRemover = ({ onBack, onNotify }) => {
     
     try {
       const localPublicPath = await setupOfflineAI();
+      
       const config = {
-        model: 'medium', 
+        model: 'small', 
+        // Force the AI library to use our permanent local folder instead of the internet!
         ...(localPublicPath && { publicPath: localPublicPath }),
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
@@ -171,7 +195,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       }, 500); 
       
     } catch (e) {
-      alert("⚠️ Request Failed: Please check internet for setup.");
+      alert("⚠️ Processing Failed: Internet required for first-time setup only.");
       setProcessedImage(image); 
       setStep('edit');
       setEditMode('erase'); 
@@ -182,16 +206,23 @@ const BgRemover = ({ onBack, onNotify }) => {
   // Canvas & Editing Logic
   useEffect(() => {
     if (processedImage && canvasRef.current && step === 'edit') {
-      const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
-      const img = new Image();
-      img.crossOrigin = "anonymous"; 
-      img.onload = () => {
-        canvasRef.current.width = img.width;
-        canvasRef.current.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        saveHistoryState(); 
-      };
-      img.src = processedImage;
+      try {
+        const ctx = canvasRef.current.getContext('2d');
+        const img = new Image();
+        img.crossOrigin = "anonymous"; 
+        img.onload = () => {
+          canvasRef.current.width = img.width;
+          canvasRef.current.height = img.height;
+          // Enhancing render quality for small model
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0);
+          saveHistoryState(); 
+        };
+        img.src = processedImage;
+      } catch (err) {
+        console.error("Canvas Render Error:", err);
+      }
     }
   }, [processedImage, step]);
 
@@ -342,11 +373,10 @@ const BgRemover = ({ onBack, onNotify }) => {
   const handleSave = async () => {
     if (!canvasRef.current || isSaving) return;
     
-    // Start Fake Ad Display Logic
     setIsSaving(true);
     setSaveStatus("Watching Ad to Save...");
     
-    // Simulate Ad duration (e.g., 3 seconds)
+    // Simulate 3 seconds Ad duration
     setTimeout(async () => {
         setSaveStatus("Saving Image...");
         const dataUrl = exportImageWithBackground();
@@ -359,7 +389,7 @@ const BgRemover = ({ onBack, onNotify }) => {
             alert("Failed to process image."); 
             setIsSaving(false);
         }
-    }, 3000); // Ad duration
+    }, 3000);
   };
 
   const checkerboardStyle = {
@@ -410,13 +440,14 @@ const BgRemover = ({ onBack, onNotify }) => {
                   <p className="text-gray-400 text-sm">{saveStatus}</p>
                </div>
             ) : isProcessing ? (
-              <div className="bg-gray-900/90 p-8 rounded-3xl border border-blue-500/30 flex flex-col items-center">
+              <div className="bg-gray-900/90 p-8 rounded-3xl border border-blue-500/30 flex flex-col items-center shadow-2xl">
                  <div className="w-20 h-20 mb-6 relative flex items-center justify-center">
                     <div className="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
                     <div className="absolute inset-0 border-4 border-transparent border-t-blue-500 border-r-blue-500 rounded-full animate-spin"></div>
                     <span className="font-black text-xl text-white">{downloadProgress}%</span>
                  </div>
                  <h2 className="text-lg font-bold text-white mb-2">{saveStatus || "Processing..."}</h2>
+                 <p className="text-xs text-red-400 font-bold mb-2">⚠️ Please do not close the app</p>
                  <p className="text-xs text-gray-400 italic max-w-[200px]">{GAME_TIPS[tipIndex]}</p>
               </div>
             ) : (
@@ -452,19 +483,19 @@ const BgRemover = ({ onBack, onNotify }) => {
             <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
                 
                 <div className="w-full max-w-sm mb-12">
-                   <div className="aspect-[3/4] border-2 border-dashed border-blue-500/30 rounded-[2rem] bg-blue-500/5 flex flex-col items-center justify-center">
+                   <div className="aspect-[3/4] border-2 border-dashed border-blue-500/30 rounded-[2rem] bg-blue-500/5 flex flex-col items-center justify-center shadow-lg">
                       <Icons.Upload />
-                      <p className="mt-4 text-gray-400 font-medium">Please select a clear photo</p>
+                      <p className="mt-4 text-gray-400 font-medium text-center px-4">Upload a clear photo with good lighting</p>
                    </div>
                 </div>
 
                 {/* Bottom Action Sheet for Camera/Gallery */}
-                <div className="w-full flex gap-4 mt-auto">
-                   <button onClick={() => cameraInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700">
+                <div className="w-full flex gap-4 mt-auto pb-4">
+                   <button onClick={() => cameraInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700 shadow-xl">
                       <div className="text-blue-400"><Icons.Camera /></div>
                       <span className="font-bold text-sm">Camera</span>
                    </button>
-                   <button onClick={() => galleryInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700">
+                   <button onClick={() => galleryInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700 shadow-xl">
                       <div className="text-blue-400"><Icons.Gallery /></div>
                       <span className="font-bold text-sm">Gallery</span>
                    </button>
@@ -500,7 +531,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                 </div>
 
                 {/* Bottom Tools Sheet */}
-                <div className="bg-[#0a0f1d] rounded-t-[2.5rem] p-5 pb-6 flex flex-col gap-4 shadow-2xl shrink-0 border-t border-gray-800">
+                <div className="bg-[#0a0f1d] rounded-t-[2.5rem] p-5 pb-6 flex flex-col gap-4 shadow-2xl shrink-0 border-t border-gray-800 z-20">
                     
                     {/* Tool Settings Row */}
                     <div className="flex justify-between items-center h-[50px]">
@@ -519,7 +550,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
                             {editMode === 'crop' && (
                                 <div className="flex items-center gap-2 text-sm text-gray-400 font-medium">
-                                    <span>Pinch to Zoom & Pan</span>
+                                    <span>Pinch/Drag to Crop & Pan</span>
                                 </div>
                             )}
 
@@ -540,7 +571,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                     {/* Main Tools Nav */}
                     <div className="flex justify-around items-center pt-2 pb-2 bg-gray-900/50 rounded-2xl border border-gray-800 p-2">
                         <button onClick={() => setEditMode('crop')} className={`flex flex-col items-center gap-1.5 ${editMode === 'crop' ? 'text-blue-500' : 'text-gray-400 hover:text-gray-200'}`}>
-                            <Icons.Crop /> <span className="text-[10px] font-bold">Crop</span>
+                            <Icons.Crop /> <span className="text-[10px] font-bold">Crop/Pan</span>
                         </button>
                         <button onClick={() => setEditMode('bg')} className={`flex flex-col items-center gap-1.5 ${editMode === 'bg' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}>
                             <Icons.Background /> <span className="text-[10px] font-bold">Background</span>
@@ -570,7 +601,7 @@ const BgRemover = ({ onBack, onNotify }) => {
                     <span>Preview</span>
                 </div>
                 {/* Dynamic Grid Layout based on 'printCopies' */}
-                <div className={`grid gap-2 ${printCopies <= 4 ? 'grid-cols-2' : printCopies <= 9 ? 'grid-cols-3' : 'grid-cols-4'} w-full mx-auto`}>
+                <div className={`grid gap-2 ${printCopies <= 4 ? 'grid-cols-2' : printCopies <= 9 ? 'grid-cols-3' : 'grid-cols-4'} w-full mx-auto pb-4`}>
                   {Array.from({ length: printCopies }).map((_, i) => (
                     <div 
                       key={i} 
@@ -592,9 +623,10 @@ const BgRemover = ({ onBack, onNotify }) => {
                      onChange={(e) => setPhotoSize(e.target.value)}
                      className="bg-gray-800 text-white text-sm font-bold border border-gray-700 rounded-lg px-3 py-1.5 focus:outline-none"
                   >
-                     <option value="35x45 mm">35x45 mm (India)</option>
+                     <option value="35x45 mm">35x45 mm (India/UK)</option>
                      <option value="2x2 in">2x2 in (US Visa)</option>
-                     <option value="30x40 mm">30x40 mm</option>
+                     <option value="30x40 mm">30x40 mm (UAE)</option>
+                     <option value="45x60 mm">45x60 mm (Russia)</option>
                   </select>
                 </div>
 
