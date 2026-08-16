@@ -14,10 +14,10 @@ const Icons = {
   Undo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>,
   Redo: () => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>,
   Crown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="2 15 2 2 8 8 12 2 16 8 22 2 22 15"/><path d="M2 15h20v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4z"/></svg>,
-  GameController: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="15" y2="12"/></svg>,
   Bulb: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1.65.68 2.8 1.5 3.5.76.76 1.23 1.52 1.41 2.5"/></svg>,
   UserFocus: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>,
-  ImageSquare: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+  ImageSquare: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+  Border: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><rect x="7" y="7" width="10" height="10" rx="1" strokeDasharray="2 2"/></svg>
 };
 
 const GAME_TIPS = [
@@ -28,7 +28,10 @@ const GAME_TIPS = [
 ];
 
 const BgRemover = ({ onBack, onNotify }) => {
-  // State Variables
+  // Application Flow State
+  const [step, setStep] = useState('upload'); // 'upload', 'preview', 'edit', 'print'
+  
+  // Image & Processing States
   const [image, setImage] = useState(null);
   const [imageBlob, setImageBlob] = useState(null); 
   const [processedImage, setProcessedImage] = useState(null);
@@ -39,20 +42,25 @@ const BgRemover = ({ onBack, onNotify }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false); 
   const [bgColor, setBgColor] = useState('transparent'); 
+  const [tipIndex, setTipIndex] = useState(0);
 
   // Canvas & Editing Refs
   const canvasRef = useRef(null);
   const originalImgRef = useRef(null); 
-  const [editMode, setEditMode] = useState('move'); 
+  const [editMode, setEditMode] = useState('move'); // 'move', 'erase', 'restore', 'border'
   const [brushSize, setBrushSize] = useState(30);
+  const [borderWidth, setBorderWidth] = useState(0);
+  
+  // History Refs for Undo/Redo
   const historyRef = useRef([]);
   const redoRef = useRef([]);
   const [historyCount, setHistoryCount] = useState(0);
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+  
+  // Pointer Events Refs
   const isDragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
   const fileInputRef = useRef(null);
-  const [tipIndex, setTipIndex] = useState(0);
 
   const passportColors = ['transparent', '#005bb5', '#ffffff', '#ff0000', '#f87171', '#4ade80', '#a855f7', '#64748b'];
 
@@ -89,11 +97,12 @@ const BgRemover = ({ onBack, onNotify }) => {
       img.src = URL.createObjectURL(file);
       setProcessedImage(null);
       setBgColor('transparent');
+      setStep('preview');
       e.target.value = null; 
     }
   };
 
-  // 🔥 THE SMART FILESYSTEM DOWNLOADER (Your Logic)
+  // 🔥 THE SMART FILESYSTEM DOWNLOADER (Offline Engine)
   const setupOfflineAI = async () => {
     if (!Capacitor.isNativePlatform()) return undefined; 
     const assetFolder = 'pro_ai_engine';
@@ -148,6 +157,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       
       setTimeout(() => {
           setProcessedImage(url);
+          setStep('edit'); // Move to Edit Workspace
           setEditMode('move'); 
           setIsProcessing(false);
           historyRef.current = [];
@@ -159,6 +169,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       alert("⚠️ Request Failed: Please check internet for one-time setup.");
       if (onNotify) onNotify("⚠️ AI couldn't complete. Switched to Manual.");
       setProcessedImage(image); 
+      setStep('edit');
       setEditMode('erase'); 
       setIsProcessing(false);
       setSaveStatus("");
@@ -172,9 +183,9 @@ const BgRemover = ({ onBack, onNotify }) => {
     return "Magic Applied! ✨";
   };
 
-  // --- CANVAS DRAWING LOGIC (Your Logic) ---
+  // --- CANVAS DRAWING LOGIC (Erase & Restore) ---
   useEffect(() => {
-    if (processedImage && canvasRef.current) {
+    if (processedImage && canvasRef.current && step === 'edit') {
       const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
       const img = new Image();
       img.crossOrigin = "anonymous"; 
@@ -186,7 +197,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       };
       img.src = processedImage;
     }
-  }, [processedImage]);
+  }, [processedImage, step]);
 
   const saveHistoryState = () => {
     if (canvasRef.current) {
@@ -240,7 +251,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   const handlePointerDown = (e) => {
-    if (!editMode || editMode === 'move') {
+    if (!editMode || editMode === 'move' || editMode === 'border') {
         isDragging.current = true;
         lastPos.current = { x: e.touches ? e.touches[0].clientX : e.clientX, y: e.touches ? e.touches[0].clientY : e.clientY };
         return;
@@ -251,7 +262,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const handlePointerMove = (e) => {
     if (!isDragging.current) return;
-    if (editMode === 'move') {
+    if (editMode === 'move' || editMode === 'border') {
       const cx = e.touches ? e.touches[0].clientX : e.clientX;
       const cy = e.touches ? e.touches[0].clientY : e.clientY;
       setTransform(t => ({ ...t, x: t.x + (cx - lastPos.current.x), y: t.y + (cy - lastPos.current.y) }));
@@ -303,6 +314,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       } else { handlePointerDown(e); }
   };
 
+  // --- EXPORT & SAVE LOGIC ---
   const blobToBase64 = (blob) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -317,10 +329,21 @@ const BgRemover = ({ onBack, onNotify }) => {
     exportCanvas.width = canvasRef.current.width;
     exportCanvas.height = canvasRef.current.height;
     const ctx = exportCanvas.getContext('2d');
+    
+    // Draw Background Color
     if (bgColor !== 'transparent') {
       ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
     }
+    
+    // Draw Border if applied
+    if (borderWidth > 0) {
+       ctx.shadowColor = 'white';
+       ctx.shadowBlur = borderWidth * 2;
+       ctx.shadowOffsetX = 0;
+       ctx.shadowOffsetY = 0;
+    }
+    
     ctx.drawImage(canvasRef.current, 0, 0);
     return exportCanvas.toDataURL('image/png');
   };
@@ -370,39 +393,46 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
+  // Helper for Checkerboard UI
+  const checkerboardStyle = {
+    backgroundImage: 'linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)',
+    backgroundSize: '20px 20px',
+    backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
+  };
+
   // ==========================================
-  // 🌟 THE PREMIUM UI (Tailwind Based)
+  // 🌟 THE ULTIMATE PREMIUM UI (Tailwind Based)
   // ==========================================
   return (
     <div className="min-h-screen bg-blue-600 font-sans flex flex-col relative overflow-hidden text-white">
       
-      {/* 1. GUIDE MODAL */}
-      {showGuide && (
+      {/* 1. PERFECT ENGLISH GUIDE MODAL */}
+      {showGuide && step === 'upload' && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-fade-in-up">
             <h2 className="text-2xl font-black text-gray-900 mb-2 text-center">Passport Photo Tips 📸</h2>
-            <p className="text-gray-500 text-sm mb-6 text-center">Best quality cutting ke liye 3 rules</p>
+            <p className="text-gray-500 text-sm mb-6 text-center">Follow these rules for a perfect cutout</p>
             
             <div className="space-y-4 text-left mb-8">
-              <div className="flex items-start gap-3 bg-blue-50 p-3 rounded-xl">
+              <div className="flex items-start gap-3 bg-blue-50 p-3 rounded-xl border border-blue-100">
                 <div className="mt-1"><Icons.Bulb /></div>
                 <div>
-                  <h4 className="font-bold text-gray-800 text-sm">Good Lighting</h4>
-                  <p className="text-xs text-gray-500">Chehre par dono taraf barabar roshni ho.</p>
+                  <h4 className="font-bold text-gray-800 text-sm">Optimal Lighting</h4>
+                  <p className="text-xs text-gray-600">Ensure uniform lighting on your face from both sides.</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 bg-blue-50 p-3 rounded-xl">
+              <div className="flex items-start gap-3 bg-blue-50 p-3 rounded-xl border border-blue-100">
                 <div className="mt-1"><Icons.UserFocus /></div>
                 <div>
                   <h4 className="font-bold text-gray-800 text-sm">Straight Posture</h4>
-                  <p className="text-xs text-gray-500">Phone aankhon ke level par rakhein.</p>
+                  <p className="text-xs text-gray-600">Keep your device at eye level and look straight.</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 bg-blue-50 p-3 rounded-xl">
+              <div className="flex items-start gap-3 bg-blue-50 p-3 rounded-xl border border-blue-100">
                 <div className="mt-1"><Icons.ImageSquare /></div>
                 <div>
                   <h4 className="font-bold text-gray-800 text-sm">Clear Background</h4>
-                  <p className="text-xs text-gray-500">Peeche ka hissa plain hona chahiye.</p>
+                  <p className="text-xs text-gray-600">Use a plain background for highest AI precision.</p>
                 </div>
               </div>
             </div>
@@ -442,115 +472,196 @@ const BgRemover = ({ onBack, onNotify }) => {
          </div>
       )}
 
-      {/* 3. TOP HEADER */}
-      <div className="flex justify-between items-center p-4">
+      {/* 3. TOP HEADER (Shrink-0 to prevent squash) */}
+      <div className="flex justify-between items-center p-4 shrink-0">
         <div className="flex items-center gap-2">
-            <button onClick={onBack} className="p-1"><Icons.Back/></button>
-            <span className="font-bold text-lg">Pro Passport Maker</span>
+            <button onClick={() => step === 'upload' ? onBack() : setStep(step === 'print' ? 'edit' : 'upload')} className="p-1"><Icons.Back/></button>
+            <span className="font-bold text-lg tracking-wide">
+              {step === 'upload' ? 'Pro Passport Maker' : step === 'print' ? 'Print & Copies' : 'Change Background'}
+            </span>
         </div>
         <div className="flex items-center gap-3">
-            <button onClick={() => setIsPremium(!isPremium)} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 ${isPremium ? 'bg-amber-500 text-white' : 'bg-white/20 text-white'}`}>
+            <button onClick={() => setIsPremium(!isPremium)} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 transition-colors ${isPremium ? 'bg-amber-500 text-white' : 'bg-white/20 text-white'}`}>
                 <Icons.Crown/> {isPremium ? "Pro" : "Free"}
             </button>
-            {processedImage && (
-                <button onClick={handleSave} disabled={isSaving} className="bg-white text-blue-600 px-4 py-1.5 rounded-full font-bold text-sm shadow-md">
-                    Save
-                </button>
-            )}
         </div>
       </div>
 
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
 
-      {/* 4. MAIN BODY (Curved White Container) */}
-      <div className="flex-1 bg-gray-50 rounded-t-[2.5rem] mt-2 flex flex-col relative overflow-hidden shadow-[0_-10px_20px_rgba(0,0,0,0.1)]">
+      {/* 4. MAIN BODY (Flex-1 and overflow-hidden to fix overlap) */}
+      <div className="flex-1 bg-gray-50 rounded-t-[2.5rem] flex flex-col relative overflow-hidden shadow-[0_-10px_20px_rgba(0,0,0,0.1)] w-full max-w-md mx-auto">
          
-         {/* Checkerboard Pattern for Transparent Look */}
-         <div className="absolute inset-0 opacity-40 pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)', backgroundSize: '20px 20px' }}></div>
+         {/* Checkerboard Pattern Base */}
+         <div className="absolute inset-0 opacity-40 pointer-events-none" style={checkerboardStyle}></div>
 
-         {!image ? (
-            /* UPLOAD UI */
-            <div className="flex-1 flex items-center justify-center p-6 z-10">
+         {/* STEP A: UPLOAD UI */}
+         {step === 'upload' && (
+            <div className="flex-1 flex items-center justify-center p-6 z-10 overflow-y-auto">
                 <div onClick={() => setShowGuide(true)} className="w-full max-w-xs aspect-square border-2 border-dashed border-blue-400 bg-blue-50/80 hover:bg-blue-100 rounded-[2rem] flex flex-col items-center justify-center cursor-pointer transition-all shadow-sm">
-                   <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md mb-4">
-                      <Icons.Upload />
-                   </div>
+                   <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md mb-4"><Icons.Upload /></div>
                    <p className="text-xl font-bold text-gray-800">Upload Photo</p>
-                   <p className="text-sm text-gray-500 mt-2">Gallery se chunein</p>
+                   <p className="text-sm text-gray-500 mt-2">Choose from gallery</p>
                 </div>
             </div>
-         ) : !processedImage ? (
-            /* PREVIEW BEFORE PROCESSING */
-            <div className="flex-1 flex flex-col items-center justify-center p-6 z-10">
-                <img src={image} className="max-w-full max-h-[60vh] object-contain rounded-2xl shadow-xl mb-8 border-4 border-white" alt="Original" />
-                <button onClick={runAiRemoval} disabled={isProcessing} className="bg-blue-600 text-white px-8 py-4 rounded-full font-bold text-lg shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center gap-3">
+         )}
+
+         {/* STEP B: PREVIEW BEFORE PROCESSING */}
+         {step === 'preview' && (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
+                <img src={image} className="max-w-full max-h-[50vh] object-contain rounded-2xl shadow-xl mb-8 border-4 border-white" alt="Original" />
+                <button onClick={runAiRemoval} disabled={isProcessing} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-full font-bold text-lg shadow-[0_10px_20px_rgba(37,99,235,0.3)] flex items-center gap-3 transition-transform active:scale-95">
                     <Icons.Check /> Generate Passport Photo
                 </button>
             </div>
-         ) : (
-            /* EDITOR UI */
-            <div className="flex-1 flex flex-col z-10">
+         )}
+
+         {/* STEP C: EDITOR UI */}
+         {step === 'edit' && (
+            <div className="flex-1 flex flex-col z-10 h-full">
+                
                 {/* Canvas Area */}
                 <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
                     <div style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'center', transition: isDragging.current ? 'none' : 'transform 0.1s', position: 'relative' }}>
+                        
                         <img src={image} className="absolute top-0 left-0 w-full h-full pointer-events-none transition-opacity duration-300" style={{ opacity: editMode === 'restore' ? 0.3 : 0 }} alt="ref" />
+                        
                         <canvas 
                            ref={canvasRef} 
-                           className="max-w-[90vw] max-h-[55vh] touch-none shadow-2xl border-2 border-white/50" 
-                           style={{ backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor }}
+                           className="max-w-[90vw] max-h-[50vh] touch-none shadow-2xl border-2 border-white/50 transition-all" 
+                           style={{ 
+                             backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor,
+                             // Inshot Style Border Effect (Drop Shadow)
+                             filter: borderWidth > 0 ? `drop-shadow(0px 0px ${borderWidth}px rgba(255,255,255,1))` : 'none'
+                           }}
                            onMouseDown={resetPath} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp} onTouchStart={resetPath} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}
                         />
                     </div>
                 </div>
 
-                {/* Bottom Tools Sheet (Dark) */}
-                <div className="bg-[#0f172a] rounded-t-[2.5rem] p-5 pb-8 flex flex-col gap-5 shadow-[0_-10px_40px_rgba(0,0,0,0.3)]">
+                {/* Bottom Tools Sheet (Dark) - shrink-0 to prevent squashing */}
+                <div className="bg-[#0f172a] rounded-t-[2.5rem] p-5 pb-6 flex flex-col gap-4 shadow-[0_-10px_40px_rgba(0,0,0,0.3)] shrink-0">
                     
-                    {/* Top Row: Undo/Redo & Slider */}
-                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded-2xl">
-                        <div className="flex gap-2 px-2">
+                    {/* Dynamic Sub-menu based on active tool */}
+                    <div className="flex justify-between items-center bg-gray-800/50 p-2 rounded-2xl h-[60px]">
+                        
+                        {/* Undo/Redo Buttons (Always visible on left) */}
+                        <div className="flex gap-2 px-2 border-r border-gray-700 pr-4">
                             <button onClick={handleUndo} disabled={historyCount <= 1} className={`p-2 ${historyCount <= 1 ? 'text-gray-600' : 'text-white'}`}><Icons.Undo/></button>
                             <button onClick={handleRedo} disabled={redoRef.current.length === 0} className={`p-2 ${redoRef.current.length === 0 ? 'text-gray-600' : 'text-white'}`}><Icons.Redo/></button>
                         </div>
-                        {(editMode === 'erase' || editMode === 'restore') && (
-                            <div className="flex items-center gap-3 pr-4 flex-1 justify-end">
-                                <div className="bg-white rounded-full border-2 border-blue-500" style={{ width: Math.max(10, brushSize/2.5), height: Math.max(10, brushSize/2.5) }}></div>
-                                <input type="range" min="10" max="100" value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} className="w-32 accent-blue-500 h-1 cursor-pointer" />
-                            </div>
-                        )}
-                    </div>
 
-                    {/* Passport Colors */}
-                    <div className="flex gap-3 overflow-x-auto pb-2 px-2 snap-x">
-                        {passportColors.map((color, idx) => (
-                            <button 
-                                key={idx} onClick={() => setBgColor(color)}
-                                className={`snap-center flex-shrink-0 w-12 h-12 rounded-full border-4 transition-transform ${bgColor === color ? 'border-blue-500 scale-110 shadow-lg shadow-blue-500/50' : 'border-gray-700 hover:border-gray-500'}`}
-                                style={{ 
-                                    backgroundColor: color, 
-                                    backgroundImage: color === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)' : 'none',
-                                    backgroundSize: '8px 8px' 
-                                }}
-                            ></button>
-                        ))}
+                        {/* Contextual Slider/Options */}
+                        <div className="flex-1 flex items-center justify-end pr-2 overflow-x-auto">
+                            {(editMode === 'erase' || editMode === 'restore') && (
+                                <div className="flex items-center gap-3 w-full justify-end pl-4">
+                                    <div className="bg-white rounded-full border-2 border-blue-500" style={{ width: Math.max(10, brushSize/2.5), height: Math.max(10, brushSize/2.5) }}></div>
+                                    <input type="range" min="10" max="100" value={brushSize} onChange={e => setBrushSize(Number(e.target.value))} className="w-32 accent-blue-500 h-1 cursor-pointer" />
+                                </div>
+                            )}
+
+                            {editMode === 'border' && (
+                                <div className="flex items-center gap-3 w-full justify-end pl-4">
+                                    <span className="text-xs text-gray-400 font-bold">Border Size</span>
+                                    <input type="range" min="0" max="15" value={borderWidth} onChange={e => setBorderWidth(Number(e.target.value))} className="w-32 accent-white h-1 cursor-pointer" />
+                                </div>
+                            )}
+
+                            {editMode === 'move' && (
+                                <div className="flex gap-2 overflow-x-auto pb-1 px-2 snap-x">
+                                    {passportColors.map((color, idx) => (
+                                        <button 
+                                            key={idx} onClick={() => setBgColor(color)}
+                                            className={`snap-center flex-shrink-0 w-8 h-8 rounded-full border-2 transition-transform ${bgColor === color ? 'border-blue-500 scale-125' : 'border-gray-600'}`}
+                                            style={{ backgroundColor: color, backgroundImage: color === 'transparent' ? checkerboardStyle.backgroundImage : 'none', backgroundSize: '8px 8px' }}
+                                        ></button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Editing Tools Bar */}
-                    <div className="flex justify-around items-center pt-2 border-t border-gray-800">
+                    <div className="flex justify-around items-center pt-2 pb-2">
                         <button onClick={() => setEditMode('move')} className={`flex flex-col items-center gap-1.5 ${editMode === 'move' ? 'text-blue-500' : 'text-gray-400'}`}>
-                            <Icons.Move /> <span className="text-xs font-bold">Move</span>
+                            <Icons.Move /> <span className="text-[10px] font-bold">Move/BG</span>
+                        </button>
+                        <button onClick={() => setEditMode('border')} className={`flex flex-col items-center gap-1.5 ${editMode === 'border' ? 'text-white' : 'text-gray-400'}`}>
+                            <Icons.Border /> <span className="text-[10px] font-bold">Border</span>
                         </button>
                         <button onClick={() => setEditMode('restore')} className={`flex flex-col items-center gap-1.5 ${editMode === 'restore' ? 'text-blue-500' : 'text-gray-400'}`}>
-                            <Icons.Brush /> <span className="text-xs font-bold">Restore</span>
+                            <Icons.Brush /> <span className="text-[10px] font-bold">Restore</span>
                         </button>
                         <button onClick={() => setEditMode('erase')} className={`flex flex-col items-center gap-1.5 ${editMode === 'erase' ? 'text-blue-500' : 'text-gray-400'}`}>
-                            <Icons.Eraser /> <span className="text-xs font-bold">Eraser</span>
+                            <Icons.Eraser /> <span className="text-[10px] font-bold">Eraser</span>
                         </button>
                     </div>
+
+                    {/* Go to Print Button */}
+                    <button 
+                        onClick={() => setStep('print')} 
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl text-[15px] shadow-lg transition-colors mt-2"
+                    >
+                        Generate A4 Print 🖨️
+                    </button>
                 </div>
             </div>
          )}
+
+         {/* STEP D: PRINT & COPIES SCREEN */}
+         {step === 'print' && (
+            <div className="flex-1 flex flex-col bg-[#0f172a] p-4 h-full z-10">
+              
+              {/* A4 Sheet Representation Area */}
+              <div className="flex-1 bg-white rounded-xl shadow-2xl p-4 overflow-y-auto mb-4 border-2 border-gray-700">
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Rendering 12 Copies on the sheet */}
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <div 
+                      key={i} 
+                      className="aspect-[3/4] border-[1px] border-dashed border-gray-300 flex items-end justify-center overflow-hidden"
+                      style={{ backgroundColor: bgColor === 'transparent' ? '#ffffff' : bgColor }}
+                    >
+                      <img 
+                         src={exportImageWithBackground()} 
+                         alt={`copy-${i}`} 
+                         className="w-full h-full object-contain" 
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Print Settings & Action Buttons */}
+              <div className="bg-gray-800 rounded-2xl p-5 text-white shrink-0 shadow-lg border border-gray-700">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-gray-400 text-sm font-medium">Paper Size:</span>
+                  <span className="font-bold bg-blue-600/30 text-blue-400 px-3 py-1 rounded-lg text-sm border border-blue-500/50">A4 Standard</span>
+                </div>
+                <div className="flex justify-between items-center mb-6">
+                  <span className="text-gray-400 text-sm font-medium">Total Copies:</span>
+                  <span className="font-bold text-lg">12</span>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={handleSave} disabled={isSaving} className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-green-900/50">
+                    <span className="text-xl">💾</span> {isSaving ? 'Saving...' : 'Save HD'}
+                  </button>
+                  <button onClick={() => window.print()} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-900/50">
+                    <span className="text-xl">🖨️</span> Print
+                  </button>
+                </div>
+              </div>
+            </div>
+         )}
       </div>
+
+      {/* 5. ADVERTISEMENT PLACEHOLDER (Safe Area at Bottom) */}
+      <div className="w-full h-14 bg-gray-200 shrink-0 flex items-center justify-center border-t border-gray-300 z-50">
+        <span className="text-xs text-gray-500 font-bold tracking-widest uppercase">
+          Advertisement Placeholder
+        </span>
+      </div>
+
     </div>
   );
 };
