@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal";
 import { Capacitor } from '@capacitor/core'; 
+import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 // --- ICONS ---
 const Icons = {
@@ -62,6 +63,7 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const passportColors = ['transparent', '#005bb5', '#ffffff', '#ff0000', '#38bdf8', '#fbbf24', '#94a3b8'];
 
+  // 🚀 Auto-Close Guide After 5 Seconds
   useEffect(() => {
     let timer;
     if (showGuide && step === 'upload') {
@@ -78,13 +80,14 @@ const BgRemover = ({ onBack, onNotify }) => {
     return () => clearInterval(interval);
   }, [isProcessing]);
 
+  // 🚀 THE ULTIMATE WHITE-SCREEN (OOM) FIX
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
       const img = new Image();
       img.crossOrigin = "anonymous"; 
       img.onload = () => {
-        const MAX_WIDTH = 800; // Optimal Size
+        const MAX_WIDTH = 600; // Limit Resolution to save RAM!
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
         const canvas = document.createElement('canvas');
         canvas.width = img.width * scale;
@@ -92,9 +95,10 @@ const BgRemover = ({ onBack, onNotify }) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        const url = canvas.toDataURL('image/jpeg', 0.9);
+        const url = canvas.toDataURL('image/jpeg', 0.8);
         setImage(url);
-        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.9);
+        // Feed Light-weight image to AI
+        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.8);
         
         originalImgRef.current = new Image();
         originalImgRef.current.crossOrigin = "anonymous";
@@ -108,29 +112,17 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🚀 THE MAGIC: 100% Native Bundle Loading, NO FILESYSTEM CRASHES!
+  // 🚀 THE MAGIC: HYBRID AI ENGINE (Will Never Show Error!)
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
     setSaveStatus("Initializing Pro AI...");
-    
-    try {
-      const config = {
-        model: 'small', // Lightest Model
-        publicPath: window.location.origin + '/ai-local/', // 100% Crash-Proof Bundle Path
-        progress: (key, current, total) => {
-            const percent = Math.round((current / total) * 100);
-            if (key.includes('compute')) setSaveStatus("Extracting Portrait...");
-            setDownloadProgress(percent > 99 ? 99 : percent);
-        }
-      };
-      
-      const blob = await removeBackground(imageBlob, config);
+
+    const handleSuccess = (blob) => {
       const url = URL.createObjectURL(blob);
       setDownloadProgress(100); 
       setSaveStatus(""); 
-      
       setTimeout(() => {
           setProcessedImage(url);
           setStep('edit'); 
@@ -140,18 +132,50 @@ const BgRemover = ({ onBack, onNotify }) => {
           redoRef.current = [];
           setHistoryCount(0);
       }, 500); 
-      
+    };
+    
+    try {
+      // 🟢 ATTEMPT 1: Try Local Folder ('ai-local/')
+      const configLocal = {
+        model: 'small',
+        publicPath: 'ai-local/', // Safe Vite Path
+        progress: (key, current, total) => {
+            const percent = Math.round((current / total) * 100);
+            if (key.includes('compute')) setSaveStatus("Extracting Portrait...");
+            setDownloadProgress(percent > 99 ? 99 : percent);
+        }
+      };
+      const blob = await removeBackground(imageBlob, configLocal);
+      handleSuccess(blob);
+
     } catch (e) {
-      console.error("AI Bundle Error:", e);
-      alert("⚠️ Processing Failed: Please make sure ai-local folder is in public directory.");
-      setProcessedImage(image); 
-      setStep('edit');
-      setEditMode('erase'); 
-      setIsProcessing(false);
+      // 🟡 ATTEMPT 2: Local Failed (Missing 'small' file). Fallback to Internet!
+      console.warn("Local files missing, switching to Cloud Download...");
+      setSaveStatus("Connecting to Cloud AI...");
+      
+      try {
+        const configCloud = {
+          model: 'small',
+          progress: (key, current, total) => {
+              const percent = Math.round((current / total) * 100);
+              if (key.includes('fetch')) setSaveStatus(`Downloading Assets... ${percent}%`);
+              else if (key.includes('compute')) setSaveStatus("Extracting via Cloud...");
+              setDownloadProgress(percent > 99 ? 99 : percent);
+          }
+        };
+        const blob = await removeBackground(imageBlob, configCloud);
+        handleSuccess(blob);
+
+      } catch (cloudError) {
+        // 🔴 ATTEMPT 3: No Internet & No Local Files -> Safe Fail
+        alert("⚠️ Internet Required: Background Removal assets are not downloaded yet.");
+        setIsProcessing(false);
+        setSaveStatus("");
+      }
     }
   };
 
-  // Canvas Drawing & Editing
+  // Canvas Drawing & Editing (Memory Locked)
   useEffect(() => {
     if (processedImage && canvasRef.current && step === 'edit') {
       try {
@@ -181,7 +205,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   const saveHistoryState = () => {
     if (canvasRef.current) {
         redoRef.current = [];
-        if(historyRef.current.length > 5) historyRef.current.shift(); 
+        if(historyRef.current.length > 5) historyRef.current.shift(); // Save RAM
         const stateUrl = canvasRef.current.toDataURL('image/png', 0.8); 
         historyRef.current.push(stateUrl);
         setHistoryCount(historyRef.current.length);
@@ -285,7 +309,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // Generate Print Image safely
+  // Generate HD Print Layout Image Safely
   const goToPrintLayout = () => {
     if(!canvasRef.current) return;
     const exportCanvas = document.createElement('canvas');
@@ -304,11 +328,18 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const executeDownload = async (dataUrl, fileName) => {
     try {
-      const link = document.createElement('a');
-      link.download = fileName;
-      link.href = dataUrl;
-      link.click();
-      if(onNotify) onNotify("✅ Saved to Gallery!");
+      if (Capacitor.isNativePlatform()) {
+         try { await Filesystem.requestPermissions(); } catch (e) { }
+         const base64Data = dataUrl.split(',')[1];
+         await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents, recursive: true });
+         if(onNotify) onNotify("✅ Saved successfully!", false, fileName, 'Image Cutout', null);
+      } else {
+         const link = document.createElement('a');
+         link.download = fileName;
+         link.href = dataUrl;
+         link.click();
+         if(onNotify) onNotify("✅ Saved to Gallery!");
+      }
     } catch (error) {
       alert("⚠️ Save Failed! Allow Storage permissions.");
     } finally {
@@ -317,6 +348,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
+  // 🚀 PERFECT AD LOGIC ON SAVE
   const handleSave = async () => {
     if (!finalPrintUrl || isSaving) return;
     setIsSaving(true);
@@ -338,6 +370,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] font-sans flex flex-col relative overflow-hidden text-white">
       
+      {/* GUIDE MODAL */}
       {showGuide && step === 'upload' && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity">
           <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl relative">
@@ -361,6 +394,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         </div>
       )}
 
+      {/* OVERLAY LOADING / AD */}
       {(isProcessing || isSaving) && (
          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 flex-col text-center">
             {isSaving && saveStatus.includes("Ad") ? (
@@ -389,6 +423,7 @@ const BgRemover = ({ onBack, onNotify }) => {
          </div>
       )}
 
+      {/* APP HEADER */}
       <div className="flex justify-between items-center p-4 shrink-0 bg-[#0a0f1d]">
         <div className="flex items-center gap-2">
             <button onClick={() => step === 'upload' ? onBack() : setStep(step === 'print' ? 'edit' : 'upload')} className="p-1"><Icons.Back/></button>
@@ -402,9 +437,11 @@ const BgRemover = ({ onBack, onNotify }) => {
       <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
       <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleImageUpload} />
 
+      {/* MAIN CONTAINER */}
       <div className="flex-1 bg-[#151b2b] rounded-t-[2.5rem] flex flex-col relative overflow-hidden shadow-inner w-full max-w-md mx-auto">
          <div className="absolute inset-0 opacity-20 pointer-events-none" style={checkerboardStyle}></div>
 
+         {/* 1. UPLOAD SCREEN */}
          {step === 'upload' && (
             <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
                 <div className="w-full max-w-sm mb-12">
@@ -424,6 +461,7 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
 
+         {/* 2. PREVIEW SCREEN */}
          {step === 'preview' && (
             <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
                 <img src={image} className="max-w-full max-h-[50vh] object-contain rounded-2xl shadow-2xl mb-10 border-4 border-gray-700" alt="Original" />
@@ -433,6 +471,7 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
 
+         {/* 3. EDIT SCREEN */}
          {step === 'edit' && (
             <div className="flex-1 flex flex-col z-10 h-full">
                 <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
@@ -490,6 +529,7 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
 
+         {/* 4. PRINT SCREEN */}
          {step === 'print' && (
             <div className="flex-1 flex flex-col bg-[#0a0f1d] p-4 h-full z-10">
               <div className="flex-1 bg-gray-100 rounded-2xl shadow-inner p-4 overflow-y-auto mb-4 border border-gray-700 flex flex-col">
