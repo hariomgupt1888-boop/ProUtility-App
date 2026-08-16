@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal";
 import { Capacitor } from '@capacitor/core'; 
-import { Filesystem, Directory } from '@capacitor/filesystem'; 
 
 // --- ICONS ---
 const Icons = {
@@ -29,7 +28,7 @@ const GAME_TIPS = [
 const BgRemover = ({ onBack, onNotify }) => {
   const [step, setStep] = useState('upload'); 
   const [image, setImage] = useState(null);
-  const [imageBlob, setImageBlob] = useState(null); // The Lightweight Blob
+  const [imageBlob, setImageBlob] = useState(null); 
   const [processedImage, setProcessedImage] = useState(null);
   const [finalPrintUrl, setFinalPrintUrl] = useState(null);
 
@@ -85,9 +84,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       const img = new Image();
       img.crossOrigin = "anonymous"; 
       img.onload = () => {
-        // 🚀 THE ULTIMATE WHITE-SCREEN (OOM) FIX 🚀
-        // हम फोटो को 600px तक सिकोड़ रहे हैं। 
-        const MAX_WIDTH = 600; 
+        const MAX_WIDTH = 800; // Optimal Size
         const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
         const canvas = document.createElement('canvas');
         canvas.width = img.width * scale;
@@ -95,13 +92,9 @@ const BgRemover = ({ onBack, onNotify }) => {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        const url = canvas.toDataURL('image/jpeg', 0.8);
+        const url = canvas.toDataURL('image/jpeg', 0.9);
         setImage(url);
-        
-        // 🚀 CRITICAL FIX: हम इस हल्की (Compressed) फोटो को ही AI को देंगे!
-        canvas.toBlob((blob) => { 
-            setImageBlob(blob); 
-        }, 'image/jpeg', 0.8);
+        canvas.toBlob((blob) => { setImageBlob(blob); }, 'image/jpeg', 0.9);
         
         originalImgRef.current = new Image();
         originalImgRef.current.crossOrigin = "anonymous";
@@ -115,45 +108,17 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  const setupOfflineAI = async () => {
-    if (!Capacitor.isNativePlatform()) return undefined; 
-    const assetFolder = 'pro_ai_engine';
-    const assets = [
-      { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm.wasm', path: `${assetFolder}/ort-wasm.wasm` },
-      { url: 'https://unpkg.com/@imgly/background-removal@1.4.5/dist/ort-wasm-simd.wasm', path: `${assetFolder}/ort-wasm-simd.wasm` },
-      { url: 'https://unpkg.com/@imgly/background-removal-data@1.4.5/dist/models/small', path: `${assetFolder}/models/small` }
-    ];
-
-    try {
-      let allExist = true;
-      for (const asset of assets) {
-        try { await Filesystem.stat({ path: asset.path, directory: Directory.Data }); } 
-        catch (e) { allExist = false; break; }
-      }
-      if (!allExist) {
-        setSaveStatus("Setting up Pro AI...");
-        try { await Filesystem.mkdir({ path: `${assetFolder}/models`, directory: Directory.Data, recursive: true }); } catch (e) {}
-        for (let i = 0; i < assets.length; i++) {
-          setDownloadProgress(Math.round(((i + 1) / assets.length) * 100));
-          await Filesystem.downloadFile({ url: assets[i].url, path: assets[i].path, directory: Directory.Data });
-        }
-      }
-      const uriRes = await Filesystem.getUri({ path: assetFolder, directory: Directory.Data });
-      return Capacitor.convertFileSrc(uriRes.uri) + '/';
-    } catch (e) { return undefined; }
-  };
-
+  // 🚀 THE MAGIC: 100% Native Bundle Loading, NO FILESYSTEM CRASHES!
   const runAiRemoval = async () => {
     if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
-    setSaveStatus("Initializing...");
+    setSaveStatus("Initializing Pro AI...");
     
     try {
-      const localPublicPath = await setupOfflineAI();
       const config = {
         model: 'small', // Lightest Model
-        ...(localPublicPath && { publicPath: localPublicPath }),
+        publicPath: window.location.origin + '/ai-local/', // 100% Crash-Proof Bundle Path
         progress: (key, current, total) => {
             const percent = Math.round((current / total) * 100);
             if (key.includes('compute')) setSaveStatus("Extracting Portrait...");
@@ -161,7 +126,6 @@ const BgRemover = ({ onBack, onNotify }) => {
         }
       };
       
-      // 🚀 YAHAN BHI FIX: Hum imageBlob (halki file) bhej rahe hain, na ki original heavy file!
       const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
       setDownloadProgress(100); 
@@ -178,7 +142,8 @@ const BgRemover = ({ onBack, onNotify }) => {
       }, 500); 
       
     } catch (e) {
-      alert("⚠️ Processing Failed: Engine initialization error.");
+      console.error("AI Bundle Error:", e);
+      alert("⚠️ Processing Failed: Please make sure ai-local folder is in public directory.");
       setProcessedImage(image); 
       setStep('edit');
       setEditMode('erase'); 
@@ -186,14 +151,13 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // Canvas Logic with Memory Lock
+  // Canvas Drawing & Editing
   useEffect(() => {
     if (processedImage && canvasRef.current && step === 'edit') {
       try {
         const ctx = canvasRef.current.getContext('2d');
         const img = new Image();
         img.onload = () => {
-          // 🚀 LIMIT Canvas size to avoid RAM Crash
           const MAX_CANVAS = 800;
           let w = img.width;
           let h = img.height;
@@ -209,7 +173,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         };
         img.src = processedImage;
       } catch (err) {
-        console.error("Canvas Render Error:", err);
+        console.error("Canvas Error:", err);
       }
     }
   }, [processedImage, step]);
@@ -217,7 +181,6 @@ const BgRemover = ({ onBack, onNotify }) => {
   const saveHistoryState = () => {
     if (canvasRef.current) {
         redoRef.current = [];
-        // 🚀 OOM FIX: Max 5 history states to save memory
         if(historyRef.current.length > 5) historyRef.current.shift(); 
         const stateUrl = canvasRef.current.toDataURL('image/png', 0.8); 
         historyRef.current.push(stateUrl);
@@ -322,7 +285,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // Generate Print Image safely once
+  // Generate Print Image safely
   const goToPrintLayout = () => {
     if(!canvasRef.current) return;
     const exportCanvas = document.createElement('canvas');
@@ -341,18 +304,11 @@ const BgRemover = ({ onBack, onNotify }) => {
 
   const executeDownload = async (dataUrl, fileName) => {
     try {
-      if (Capacitor.isNativePlatform()) {
-         try { await Filesystem.requestPermissions(); } catch (e) { }
-         const base64Data = dataUrl.split(',')[1];
-         await Filesystem.writeFile({ path: fileName, data: base64Data, directory: Directory.Documents, recursive: true });
-         if(onNotify) onNotify("✅ Saved successfully!", false, fileName, 'Image Cutout', null);
-      } else {
-         const link = document.createElement('a');
-         link.download = fileName;
-         link.href = dataUrl;
-         link.click();
-         if(onNotify) onNotify("✅ Saved to Gallery!");
-      }
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = dataUrl;
+      link.click();
+      if(onNotify) onNotify("✅ Saved to Gallery!");
     } catch (error) {
       alert("⚠️ Save Failed! Allow Storage permissions.");
     } finally {
