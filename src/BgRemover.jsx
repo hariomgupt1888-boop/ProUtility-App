@@ -21,18 +21,16 @@ const Icons = {
 };
 
 const GAME_TIPS = [
-  "Tip: Setting up Pro AI Engine...",
-  "Tip: Best quality edges are being calculated.",
-  "Tip: We process images for 100% privacy."
+  "Tip: Best quality edges are being calculated...",
+  "Tip: We process images for 100% privacy.",
+  "Tip: ProUtility never uploads your data."
 ];
 
 const BgRemover = ({ onBack, onNotify }) => {
   const [step, setStep] = useState('upload'); 
   const [image, setImage] = useState(null);
-  const [imageFile, setImageFile] = useState(null); // RAW File (No Canvas Heavy processing)
+  const [imageBlob, setImageBlob] = useState(null); // The Lightweight Blob
   const [processedImage, setProcessedImage] = useState(null);
-  
-  // To avoid White Screen on Print page
   const [finalPrintUrl, setFinalPrintUrl] = useState(null);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -81,17 +79,35 @@ const BgRemover = ({ onBack, onNotify }) => {
     return () => clearInterval(interval);
   }, [isProcessing]);
 
-  // 🚀 FIX 1: Send RAW File exactly like it used to work before!
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setImage(url);
-      setImageFile(file); // Passing Raw File to AI (Super Fast, No RAM Crash)
-      
-      originalImgRef.current = new Image();
-      originalImgRef.current.src = url;
-
+      const img = new Image();
+      img.crossOrigin = "anonymous"; 
+      img.onload = () => {
+        // 🚀 THE ULTIMATE WHITE-SCREEN (OOM) FIX 🚀
+        // हम फोटो को 600px तक सिकोड़ रहे हैं। 
+        const MAX_WIDTH = 600; 
+        const scale = img.width > MAX_WIDTH ? MAX_WIDTH / img.width : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const url = canvas.toDataURL('image/jpeg', 0.8);
+        setImage(url);
+        
+        // 🚀 CRITICAL FIX: हम इस हल्की (Compressed) फोटो को ही AI को देंगे!
+        canvas.toBlob((blob) => { 
+            setImageBlob(blob); 
+        }, 'image/jpeg', 0.8);
+        
+        originalImgRef.current = new Image();
+        originalImgRef.current.crossOrigin = "anonymous";
+        originalImgRef.current.src = url;
+      };
+      img.src = URL.createObjectURL(file);
       setProcessedImage(null);
       setBgColor('transparent');
       setStep('preview');
@@ -128,7 +144,7 @@ const BgRemover = ({ onBack, onNotify }) => {
   };
 
   const runAiRemoval = async () => {
-    if (!imageFile) return; 
+    if (!imageBlob) return; 
     setIsProcessing(true);
     setDownloadProgress(0); 
     setSaveStatus("Initializing...");
@@ -145,7 +161,8 @@ const BgRemover = ({ onBack, onNotify }) => {
         }
       };
       
-      const blob = await removeBackground(imageFile, config);
+      // 🚀 YAHAN BHI FIX: Hum imageBlob (halki file) bhej rahe hain, na ki original heavy file!
+      const blob = await removeBackground(imageBlob, config);
       const url = URL.createObjectURL(blob);
       setDownloadProgress(100); 
       setSaveStatus(""); 
@@ -161,7 +178,7 @@ const BgRemover = ({ onBack, onNotify }) => {
       }, 500); 
       
     } catch (e) {
-      alert("⚠️ Processing Failed: Error parsing image.");
+      alert("⚠️ Processing Failed: Engine initialization error.");
       setProcessedImage(image); 
       setStep('edit');
       setEditMode('erase'); 
@@ -176,7 +193,7 @@ const BgRemover = ({ onBack, onNotify }) => {
         const ctx = canvasRef.current.getContext('2d');
         const img = new Image();
         img.onload = () => {
-          // 🚀 FIX 2: Limit Canvas RAM Size so WebView doesn't crash
+          // 🚀 LIMIT Canvas size to avoid RAM Crash
           const MAX_CANVAS = 800;
           let w = img.width;
           let h = img.height;
@@ -200,7 +217,8 @@ const BgRemover = ({ onBack, onNotify }) => {
   const saveHistoryState = () => {
     if (canvasRef.current) {
         redoRef.current = [];
-        if(historyRef.current.length > 15) historyRef.current.shift(); 
+        // 🚀 OOM FIX: Max 5 history states to save memory
+        if(historyRef.current.length > 5) historyRef.current.shift(); 
         const stateUrl = canvasRef.current.toDataURL('image/png', 0.8); 
         historyRef.current.push(stateUrl);
         setHistoryCount(historyRef.current.length);
@@ -304,7 +322,7 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
   };
 
-  // 🚀 FIX 3: Safe Exporting for Print (Generate Once, use everywhere!)
+  // Generate Print Image safely once
   const goToPrintLayout = () => {
     if(!canvasRef.current) return;
     const exportCanvas = document.createElement('canvas');
@@ -317,7 +335,6 @@ const BgRemover = ({ onBack, onNotify }) => {
     }
     ctx.drawImage(canvasRef.current, 0, 0);
     
-    // Save generated URL so we don't recalculate it 12 times!
     setFinalPrintUrl(exportCanvas.toDataURL('image/png', 1.0));
     setStep('print');
   };
@@ -365,7 +382,6 @@ const BgRemover = ({ onBack, onNotify }) => {
   return (
     <div className="min-h-screen bg-[#0a0f1d] font-sans flex flex-col relative overflow-hidden text-white">
       
-      {/* 1. AUTO-CLOSING GUIDE MODAL */}
       {showGuide && step === 'upload' && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity">
           <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full shadow-2xl relative">
@@ -374,26 +390,21 @@ const BgRemover = ({ onBack, onNotify }) => {
             </button>
             <h2 className="text-2xl font-black text-gray-900 mb-2 text-center mt-2">Photo Guide 📸</h2>
             <p className="text-gray-500 text-sm mb-6 text-center">Perfect passport in 3 simple rules</p>
-            
             <div className="space-y-3 text-left mb-6">
               <div className="flex items-center gap-3 bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
-                <span className="text-xl">✅</span>
-                <p className="text-sm font-semibold text-gray-700">Look straight at the camera.</p>
+                <span className="text-xl">✅</span><p className="text-sm font-semibold text-gray-700">Look straight at the camera.</p>
               </div>
               <div className="flex items-center gap-3 bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
-                <span className="text-xl">☀️</span>
-                <p className="text-sm font-semibold text-gray-700">Ensure good face lighting.</p>
+                <span className="text-xl">☀️</span><p className="text-sm font-semibold text-gray-700">Ensure good face lighting.</p>
               </div>
               <div className="flex items-center gap-3 bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
-                <span className="text-xl">👤</span>
-                <p className="text-sm font-semibold text-gray-700">Single person in the photo.</p>
+                <span className="text-xl">👤</span><p className="text-sm font-semibold text-gray-700">Single person in the photo.</p>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 2. LOADING & AD OVERLAY */}
       {(isProcessing || isSaving) && (
          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 flex-col text-center">
             {isSaving && saveStatus.includes("Ad") ? (
@@ -422,7 +433,6 @@ const BgRemover = ({ onBack, onNotify }) => {
          </div>
       )}
 
-      {/* 3. TOP HEADER */}
       <div className="flex justify-between items-center p-4 shrink-0 bg-[#0a0f1d]">
         <div className="flex items-center gap-2">
             <button onClick={() => step === 'upload' ? onBack() : setStep(step === 'print' ? 'edit' : 'upload')} className="p-1"><Icons.Back/></button>
@@ -436,11 +446,9 @@ const BgRemover = ({ onBack, onNotify }) => {
       <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
       <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleImageUpload} />
 
-      {/* 4. MAIN BODY */}
       <div className="flex-1 bg-[#151b2b] rounded-t-[2.5rem] flex flex-col relative overflow-hidden shadow-inner w-full max-w-md mx-auto">
          <div className="absolute inset-0 opacity-20 pointer-events-none" style={checkerboardStyle}></div>
 
-         {/* STEP A: UPLOAD */}
          {step === 'upload' && (
             <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
                 <div className="w-full max-w-sm mb-12">
@@ -451,18 +459,15 @@ const BgRemover = ({ onBack, onNotify }) => {
                 </div>
                 <div className="w-full flex gap-4 mt-auto pb-4">
                    <button onClick={() => cameraInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700 shadow-xl">
-                      <div className="text-blue-400"><Icons.Camera /></div>
-                      <span className="font-bold text-sm">Camera</span>
+                      <div className="text-blue-400"><Icons.Camera /></div><span className="font-bold text-sm">Camera</span>
                    </button>
                    <button onClick={() => galleryInputRef.current.click()} className="flex-1 bg-gray-800 hover:bg-gray-700 py-5 rounded-2xl flex flex-col items-center justify-center gap-2 transition-transform active:scale-95 border border-gray-700 shadow-xl">
-                      <div className="text-blue-400"><Icons.Gallery /></div>
-                      <span className="font-bold text-sm">Gallery</span>
+                      <div className="text-blue-400"><Icons.Gallery /></div><span className="font-bold text-sm">Gallery</span>
                    </button>
                 </div>
             </div>
          )}
 
-         {/* STEP B: PREVIEW */}
          {step === 'preview' && (
             <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 overflow-y-auto">
                 <img src={image} className="max-w-full max-h-[50vh] object-contain rounded-2xl shadow-2xl mb-10 border-4 border-gray-700" alt="Original" />
@@ -472,7 +477,6 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
 
-         {/* STEP C: EDITOR */}
          {step === 'edit' && (
             <div className="flex-1 flex flex-col z-10 h-full">
                 <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
@@ -530,15 +534,12 @@ const BgRemover = ({ onBack, onNotify }) => {
             </div>
          )}
 
-         {/* STEP D: CUSTOM PRINT SCREEN */}
          {step === 'print' && (
             <div className="flex-1 flex flex-col bg-[#0a0f1d] p-4 h-full z-10">
               <div className="flex-1 bg-gray-100 rounded-2xl shadow-inner p-4 overflow-y-auto mb-4 border border-gray-700 flex flex-col">
                 <div className="w-full flex justify-between text-gray-500 text-xs font-bold mb-4 uppercase">
-                    <span>{photoSize}</span>
-                    <span>Preview</span>
+                    <span>{photoSize}</span><span>Preview</span>
                 </div>
-                {/* SAFE RENDER: Using the pre-generated finalPrintUrl instead of calling canvas 12 times */}
                 <div className={`grid gap-2 ${printCopies <= 4 ? 'grid-cols-2' : printCopies <= 9 ? 'grid-cols-3' : 'grid-cols-4'} w-full mx-auto pb-4`}>
                   {Array.from({ length: printCopies }).map((_, i) => (
                     <div key={i} className="aspect-[3/4] border-[1px] border-dashed border-gray-400 flex items-end justify-center overflow-hidden shadow-sm bg-white">
